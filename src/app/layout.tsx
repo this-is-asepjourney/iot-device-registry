@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'IoT Device Installation Registry | Plant Mapping & History',
   description:
-    'Sistem pencatatan dan pemetaan perangkat IoT mesin pabrik dengan aturan atomic 1:1 MCID & MAC Address, Firebase Cloud Firestore, dan scanner barcode/QR.',
+    'Sistem pencatatan dan pemetaan perangkat IoT mesin pabrik dengan aturan atomic 1:1 MCID & MAC Address dan scanner barcode/QR.',
 };
 
 export default function RootLayout({

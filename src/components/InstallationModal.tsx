@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Camera, PlusCircle, AlertCircle, CheckCircle2, Loader2, Info, MapPin } from 'lucide-react';
+import { X, Camera, PlusCircle, AlertCircle, CheckCircle2, Loader2, Info, Building2, Layers } from 'lucide-react';
 import { installDevice } from '@/lib/device-service';
-import { formatMacAddress, isValidMacAddress, normalizeMcid } from '@/lib/utils';
+import { formatMacAddress, isValidMacAddress, normalizeMcid, formatLocation, getFactoryBadgeStyle } from '@/lib/utils';
+import { FACTORY_LIST, FactoryCode } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
 interface InstallationModalProps {
@@ -25,8 +26,8 @@ export function InstallationModal({
   const [mcid, setMcid] = useState(initialMcid);
   const [macAddress, setMacAddress] = useState(initialMac);
   const [machineModel, setMachineModel] = useState('');
-  const [selectedFactory, setSelectedFactory] = useState<'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'D1' | 'D2'>('A1');
-  const [location, setLocation] = useState('');
+  const [selectedFactory, setSelectedFactory] = useState<FactoryCode>('A1');
+  const [line, setLine] = useState('');
   const [notes, setNotes] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -67,17 +68,15 @@ export function InstallationModal({
 
     setLoading(true);
     const technician = user?.email || demoUser?.email || 'technician@factory.local';
-    const finalLocation = location.trim()
-      ? `Factory ${selectedFactory} - ${location.trim()}`
-      : `Factory ${selectedFactory}`;
+    const finalLocation = formatLocation(selectedFactory, line);
 
     try {
       await installDevice({
         mcid: normMcid,
         macAddress,
-        machineModel,
+        machineModel: machineModel.trim(),
         location: finalLocation,
-        notes,
+        notes: notes.trim(),
         technicianEmail: technician,
       });
 
@@ -87,7 +86,7 @@ export function InstallationModal({
         setMcid('');
         setMacAddress('');
         setMachineModel('');
-        setLocation('');
+        setLine('');
         setNotes('');
         onClose();
       }, 1200);
@@ -153,10 +152,10 @@ export function InstallationModal({
             </div>
           )}
 
-          {/* MCID Input */}
+          {/* 1. MCID Input */}
           <div>
             <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Machine Control ID (MCID) <span className="text-cyan-400">*</span>
+              1. Machine Control ID (MCID) <span className="text-cyan-400">*</span>
             </label>
             <div className="flex gap-2">
               <input
@@ -164,7 +163,7 @@ export function InstallationModal({
                 value={mcid}
                 onChange={(e) => setMcid(e.target.value.toUpperCase())}
                 placeholder="Contoh: CNC-VF2-01"
-                className="flex-1 px-3.5 py-2.5 text-sm font-mono bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+                className="flex-1 px-3.5 py-2.5 text-sm font-mono bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors uppercase"
                 required
               />
               <button
@@ -182,10 +181,10 @@ export function InstallationModal({
             </p>
           </div>
 
-          {/* MAC Address Input */}
+          {/* 2. MAC Address Input */}
           <div>
             <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              MAC Address IoT <span className="text-cyan-400">*</span>
+              2. MAC Address IoT <span className="text-cyan-400">*</span>
             </label>
             <div className="flex gap-2">
               <input
@@ -194,7 +193,7 @@ export function InstallationModal({
                 onChange={handleMacChange}
                 maxLength={17}
                 placeholder="XX:XX:XX:XX:XX:XX"
-                className="flex-1 px-3.5 py-2.5 text-sm font-mono bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+                className="flex-1 px-3.5 py-2.5 text-sm font-mono bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors uppercase"
                 required
               />
               <button
@@ -208,77 +207,97 @@ export function InstallationModal({
               </button>
             </div>
             <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1">
-              Alamat fisik modul IoT / ESP32 / Gateway yang dipasang.
+              Alamat fisik 12 karakter heksadesimal modul IoT / ESP32 / Gateway.
             </p>
           </div>
 
-          {/* Machine Model */}
+          {/* 3. Model Mesin */}
           <div>
             <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Model / Tipe Mesin <span className="text-cyan-400">*</span>
+              3. Model Mesin <span className="text-cyan-400">*</span>
             </label>
             <input
               type="text"
               value={machineModel}
               onChange={(e) => setMachineModel(e.target.value)}
-              placeholder="Contoh: Haas CNC VF-2"
+              placeholder="Contoh: Haas CNC VF-2, Aida 50 Ton Press..."
               className="w-full px-3.5 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
               required
             />
-          </div>
-
-          {/* Factory & Location Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Lokasi Factory Pabrik</span> <span className="text-cyan-400">*</span>
-              </label>
-              <span className="text-[11px] text-cyan-400 font-medium">
-                Pilihan: <strong>{selectedFactory}</strong>
-              </span>
-            </div>
-
-            {/* Factory Chips */}
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 mb-2">
-              {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setSelectedFactory(f)}
-                  className={`py-1.5 px-1 text-xs font-bold rounded-lg border text-center transition-all ${
-                    selectedFactory === f
-                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20 scale-105'
-                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-900'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Detail workshop / lini (Contoh: Line A - Stamping Workshop)"
-              className="w-full px-3.5 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
-            />
-            <p className="text-[10px] text-slate-500 mt-1">
-              Tersimpan sebagai: <strong className="text-slate-300">Factory {selectedFactory}{location.trim() ? ` - ${location.trim()}` : ''}</strong>
+            <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1">
+              Merk dan tipe spesifikasi mesin manufaktur yang dipasangi modul.
             </p>
           </div>
 
-          {/* Notes */}
+          {/* 4. Factory Selection */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>4. Factory Pabrik</span> <span className="text-cyan-400">*</span>
+              </label>
+              <span className="text-[11px] text-cyan-400 font-semibold font-mono">
+                Factory {selectedFactory}
+              </span>
+            </div>
+
+            {/* Factory Chips Grid */}
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+              {FACTORY_LIST.map((f) => {
+                const isSelected = selectedFactory === f;
+                const style = getFactoryBadgeStyle(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setSelectedFactory(f)}
+                    className={`py-2 px-1 text-xs font-bold rounded-xl border text-center transition-all ${
+                      isSelected
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-lg shadow-cyan-500/25 scale-105'
+                        : `${style.bg} ${style.text} ${style.border} hover:opacity-90 active:scale-95`
+                    }`}
+                  >
+                    {f}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1.5">
+              Pilih area factory tempat mesin beroperasi (A1, A2, B1, B2, C1, C2, D1, D2).
+            </p>
+          </div>
+
+          {/* 5. Line Input */}
+          <div>
+            <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span>5. Line / Lini Produksi</span>
+            </label>
+            <input
+              type="text"
+              value={line}
+              onChange={(e) => setLine(e.target.value)}
+              placeholder="Contoh: Line 1, Stamping Line A, Assembly Line 3..."
+              className="w-full px-3.5 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+            />
+            <div className="mt-1 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500">
+              <span>Nomor atau nama lintasan mesin</span>
+              <span className="text-slate-400 font-mono">
+                Lokasi: <strong className="text-cyan-400">{formatLocation(selectedFactory, line)}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* 6. Catatan Tambahan (Opsional) */}
           <div>
             <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Catatan Teknis / Sensor Terpasang (Opsional)
+              6. Catatan Tambahan (Opsional)
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              placeholder="Contoh: Sensor getaran tri-axial dan modul ESP32..."
+              placeholder="Contoh: Modul IoT ESP32 sensor getaran & suhu spindel, kabel power 24V..."
               className="w-full px-3.5 py-2 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
             />
           </div>
@@ -299,7 +318,7 @@ export function InstallationModal({
               className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/30 active:scale-95 transition-all disabled:opacity-50"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              <span>Simpan Instalasi (Atomic Tx)</span>
+              <span>Simpan Instalasi</span>
             </button>
           </div>
         </form>

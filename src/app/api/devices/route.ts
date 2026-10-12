@@ -41,7 +41,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: formattedDevices,
-      engine: isCloudflareD1Configured ? 'cloudflare-d1-remote' : 'local-d1-sqlite',
+      engine: isCloudflareD1Configured ? 'cloud-remote' : 'local-engine',
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);

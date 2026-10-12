@@ -43,24 +43,32 @@ export async function fetchHistory(): Promise<InstallationHistory[]> {
   return json.data;
 }
 
+export interface DatabaseSyncStatus {
+  connected: boolean;
+  latencyMs?: number;
+  lastSyncTime: string;
+}
+
 /**
- * Check Cloudflare D1 engine status
+ * Check real-time database connectivity and synchronization
  */
-export async function checkDatabaseStatus(): Promise<{ isCloudflareRemote: boolean; engine: string }> {
+export async function checkDatabaseStatus(): Promise<DatabaseSyncStatus> {
   try {
     const res = await fetch('/api/status', { cache: 'no-store' });
     const json = await res.json();
     return {
-      isCloudflareRemote: Boolean(json.isCloudflareRemote),
-      engine: json.engine || 'Cloudflare D1 SQLite',
+      connected: Boolean(json.connected),
+      latencyMs: json.latencyMs,
+      lastSyncTime: new Date().toLocaleTimeString('id-ID'),
     };
   } catch {
     return {
-      isCloudflareRemote: false,
-      engine: 'Local D1 SQLite Engine',
+      connected: false,
+      lastSyncTime: new Date().toLocaleTimeString('id-ID'),
     };
   }
 }
+
 
 /**
  * Install new IoT device (Atomic 1:1 transaction)

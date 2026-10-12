@@ -1,15 +1,34 @@
 import { NextResponse } from 'next/server';
-import { isCloudflareD1Configured, resetLocalDatabase } from '@/lib/d1';
+import { queryD1, resetLocalDatabase } from '@/lib/d1';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return NextResponse.json({
-    success: true,
-    isCloudflareRemote: isCloudflareD1Configured,
-    engine: isCloudflareD1Configured ? 'Cloudflare D1 Remote' : 'Local D1 SQLite Engine',
-    databaseType: 'Cloudflare D1 SQLite',
-  });
+  const startTime = Date.now();
+  try {
+    // Ping database query to verify live connectivity and synchronization
+    await queryD1('SELECT 1 as ping;');
+    const latencyMs = Date.now() - startTime;
+
+    return NextResponse.json({
+      success: true,
+      connected: true,
+      syncStatus: 'synced',
+      latencyMs,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      {
+        success: false,
+        connected: false,
+        syncStatus: 'disconnected',
+        error: msg,
+      },
+      { status: 503 }
+    );
+  }
 }
 
 export async function POST() {

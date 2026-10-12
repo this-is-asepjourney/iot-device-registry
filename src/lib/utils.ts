@@ -161,3 +161,34 @@ export function getFactoryBadgeStyle(factoryCode?: string | null): { bg: string;
   }
 }
 
+/**
+ * Extracts line / sub-location specification (e.g. "Line 1", "Stamping Line A") from a location string.
+ */
+export function extractLine(locationStr?: string): string {
+  if (!locationStr) return '';
+  // Check for "Factory XX - <Line>" format
+  const factoryMatch = locationStr.match(/^Factory\s*[A-D][1-2]\s*[-–]\s*(.+)$/i);
+  if (factoryMatch) {
+    return factoryMatch[1].trim();
+  }
+  // Generic dash separator
+  const parts = locationStr.split(/\s*[-–]\s*/);
+  if (parts.length > 1) {
+    return parts.slice(1).join(' - ').trim();
+  }
+  return '';
+}
+
+/**
+ * Builds formatted location string from factory and line.
+ */
+export function formatLocation(factory: string, line?: string): string {
+  const f = factory.trim().toUpperCase();
+  const l = (line || '').trim();
+  if (!f) return l;
+  if (!l) return `Factory ${f}`;
+  return `Factory ${f} - ${l}`;
+}
+
+
+

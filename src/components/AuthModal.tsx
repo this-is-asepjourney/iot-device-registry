@@ -40,7 +40,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-slate-100 text-sm sm:text-base truncate">Identitas Petugas / Teknisi</h3>
-              <p className="text-[11px] sm:text-xs text-slate-400 truncate">Dicatat dalam audit trail Cloudflare D1</p>
+              <p className="text-[11px] sm:text-xs text-slate-400 truncate">Dicatat dalam log riwayat transaksi sistem</p>
             </div>
           </div>
           <button

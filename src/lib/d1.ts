@@ -268,39 +268,35 @@ export async function queryD1<T = unknown>(
 ): Promise<D1QueryResult<T>> {
   if (isCloudflareD1Configured) {
     // Remote Cloudflare D1 REST API
-    try {
-      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sql,
-          params,
-        }),
-      });
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sql,
+        params,
+      }),
+    });
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Cloudflare D1 HTTP Error (${res.status}): ${errText}`);
-      }
-
-      const json = await res.json();
-      if (!json.success) {
-        throw new Error(json.errors?.[0]?.message || 'Query Cloudflare D1 gagal.');
-      }
-
-      const firstResult = json.result?.[0];
-      return {
-        results: (firstResult?.results || []) as T[],
-        success: true,
-        meta: firstResult?.meta,
-      };
-    } catch (err) {
-      console.error('Remote Cloudflare D1 error, falling back to local store:', err);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Database HTTP Error (${res.status}): ${errText}`);
     }
+
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.errors?.[0]?.message || 'Query Database gagal.');
+    }
+
+    const firstResult = json.result?.[0];
+    return {
+      results: (firstResult?.results || []) as T[],
+      success: true,
+      meta: firstResult?.meta,
+    };
   }
 
   // Local D1 SQLite Engine via node:sqlite (or in-memory fallback)
@@ -355,33 +351,31 @@ export async function executeD1Batch(
   statements: { sql: string; params?: (string | number | boolean | null)[] }[]
 ): Promise<boolean> {
   if (isCloudflareD1Configured) {
-    // Remote Cloudflare D1 batch query
-    try {
-      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+    for (const stmt of statements) {
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(
-          statements.map((s) => ({
-            sql: s.sql,
-            params: s.params || [],
-          }))
-        ),
+        body: JSON.stringify({
+          sql: stmt.sql,
+          params: stmt.params || [],
+        }),
       });
 
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Cloudflare D1 Batch HTTP Error (${res.status}): ${errText}`);
+        throw new Error(`Database Batch Error (${res.status}): ${errText}`);
       }
 
       const json = await res.json();
-      return json.success;
-    } catch (err) {
-      console.error('Remote Cloudflare D1 batch error, falling back to local store:', err);
+      if (!json.success) {
+        throw new Error(json.errors?.[0]?.message || 'Eksekusi batch database gagal.');
+      }
     }
+    return true;
   }
 
   // Local SQLite Atomic Transaction

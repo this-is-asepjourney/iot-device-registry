@@ -5,21 +5,18 @@ import {
   Camera,
   PlusCircle,
   Download,
-  BookOpen,
-  RotateCcw,
   Activity,
-  Database,
-  Cloud,
   ArrowRight,
   History,
   LayoutGrid,
+  RefreshCw,
 } from 'lucide-react';
 import { Device, InstallationHistory, DeviceStatus } from '@/types';
 import {
   subscribeDevices,
   subscribeHistory,
-  resetDatabase,
   checkDatabaseStatus,
+  DatabaseSyncStatus,
 } from '@/lib/device-service';
 import { Navbar } from '@/components/Navbar';
 import { DashboardSummary } from '@/components/DashboardSummary';
@@ -31,15 +28,14 @@ import { EditDeviceModal } from '@/components/EditDeviceModal';
 import { HistoryModal } from '@/components/HistoryModal';
 import { ExportCsvModal } from '@/components/ExportCsvModal';
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal';
-import { SetupGuideModal } from '@/components/SetupGuideModal';
 import { AuthModal } from '@/components/AuthModal';
 import { formatDate } from '@/lib/utils';
 
 export default function Home() {
-  // Database status state
-  const [dbStatus, setDbStatus] = useState<{ isCloudflareRemote: boolean; engine: string }>({
-    isCloudflareRemote: false,
-    engine: 'Local D1 SQLite Engine',
+  // Database sync & online indicator state
+  const [dbSync, setDbSync] = useState<DatabaseSyncStatus>({
+    connected: true,
+    lastSyncTime: '',
   });
 
   // Data states
@@ -59,7 +55,6 @@ export default function Home() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyFilterMcid, setHistoryFilterMcid] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Scanner modal state
@@ -69,12 +64,20 @@ export default function Home() {
   const [scannedForReplace, setScannedForReplace] = useState<string>('');
   const [scannedForEdit, setScannedForEdit] = useState<string>('');
 
+  const refreshSync = () => {
+    checkDatabaseStatus().then((st) => setDbSync(st));
+  };
+
   // Check database mode and subscribe to data
   useEffect(() => {
-    checkDatabaseStatus().then((st) => setDbStatus(st));
+    refreshSync();
+
+    // Periodic heartbeat to keep sync status live
+    const interval = setInterval(refreshSync, 30000);
 
     const unsubDevices = subscribeDevices((list) => {
       setDevices(list);
+      refreshSync();
     });
 
     const unsubHistory = subscribeHistory((hist) => {
@@ -82,6 +85,7 @@ export default function Home() {
     });
 
     return () => {
+      clearInterval(interval);
       unsubDevices();
       unsubHistory();
     };
@@ -132,80 +136,91 @@ export default function Home() {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       {/* Navigation */}
       <Navbar
-        isCloudflareRemote={dbStatus.isCloudflareRemote}
+        dbConnected={dbSync.connected}
+        latencyMs={dbSync.latencyMs}
+        lastSyncTime={dbSync.lastSyncTime}
         onOpenInstallModal={() => {
           setScannedForInstall(null);
           setIsInstallModalOpen(true);
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
-        onOpenSetupModal={() => setIsSetupModalOpen(true)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
-      {/* Main Content Area (Extra bottom padding on mobile for Bottom Dock) */}
+      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6 pb-24 sm:pb-8">
-        {/* Banner Alert for Cloudflare D1 Remote vs Local D1 SQLite */}
-        {!dbStatus.isCloudflareRemote ? (
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-orange-950/30 border border-orange-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 backdrop-blur-sm animate-in fade-in">
-            <div className="flex items-start gap-2.5 sm:gap-3">
-              <div className="p-2 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 shrink-0">
-                <Database className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="text-xs font-semibold text-orange-300">
-                    Engine Database: Local D1 SQLite (node:sqlite)
-                  </h4>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-900/40 text-orange-200 border border-orange-800">
-                    data/iot-registry.sqlite
+        {/* Real-Time Database Connection & Sync Status Lamp Card */}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/70 border border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 backdrop-blur-md shadow-xl transition-all">
+          <div className="flex items-center gap-3">
+            {/* Animated Online Glow Lamp */}
+            <div
+              className={`p-2.5 rounded-xl border flex items-center justify-center shrink-0 transition-colors ${
+                dbSync.connected
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+              }`}
+            >
+              {dbSync.connected ? (
+                <span className="relative flex h-3.5 w-3.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 shadow-[0_0_12px_#10b981]"></span>
+                </span>
+              ) : (
+                <span className="relative flex h-3.5 w-3.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
+                </span>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <span>{dbSync.connected ? 'Database Terhubung & Sinkron' : 'Menghubungkan ke Database...'}</span>
+                  <span
+                    className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                      dbSync.connected
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    }`}
+                  >
+                    {dbSync.connected ? 'ONLINE' : 'CONNECTING'}
                   </span>
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
-                  Menjalankan transaksi atomik SQL 1:1, scanner barcode, dan export CSV secara lokal. Untuk menghubungkan Cloudflare D1 remote di cloud, masukkan <code>CLOUDFLARE_D1_DATABASE_ID</code> ke <code>.env.local</code>.
-                </p>
+                </h4>
               </div>
-            </div>
-            <div className="flex items-center gap-2 self-stretch sm:self-center justify-end shrink-0 pt-1 sm:pt-0">
-              <button
-                onClick={() => resetDatabase()}
-                className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition-colors active:scale-95"
-                title="Kembalikan data database ke data sampel awal pabrik"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Demo</span>
-              </button>
-              <button
-                onClick={() => setIsSetupModalOpen(true)}
-                className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-500 text-white shadow-sm transition-colors active:scale-95"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Setup D1</span>
-              </button>
+              <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>Integritas pemetaan 1-to-1 mesin dan modul IoT tersimpan aman secara terpusat.</span>
+                {dbSync.lastSyncTime && (
+                  <span className="text-slate-500 text-[10px] hidden sm:inline">• Terakhir disinkronkan: {dbSync.lastSyncTime}</span>
+                )}
+              </p>
             </div>
           </div>
-        ) : (
-          <div className="p-3 sm:p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300 backdrop-blur-sm">
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="text-[11px] sm:text-xs">
-                Terhubung ke <strong>Cloudflare D1 Remote Database</strong>. Seluruh query dan transaksi SQL tereksekusi langsung di Cloudflare.
-              </span>
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800 hidden sm:inline shrink-0 ml-2">
-              CLOUDFLARE D1
-            </span>
+
+          <div className="flex items-center gap-2 self-stretch sm:self-center justify-end shrink-0 pt-1 sm:pt-0">
+            {dbSync.latencyMs !== undefined && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 flex items-center gap-1.5 shadow-inner">
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{dbSync.latencyMs} ms</span>
+              </div>
+            )}
+            <button
+              onClick={() => refreshSync()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-colors active:scale-95"
+              title="Cek ulang sinkronisasi database"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Sinkron</span>
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Dashboard Header & KPI Metrics */}
         <section className="space-y-3 sm:space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
             <div>
               <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                <span>Dashboard Pemetaan IoT (Cloudflare D1)</span>
-                <span className="p-1 rounded bg-orange-500/10 text-orange-400 text-[10px] sm:text-xs font-normal border border-orange-500/20">
-                  SQLite
-                </span>
+                <span>Dashboard Pemetaan IoT Mesin Pabrik</span>
               </h2>
               <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
                 Monitor status instalasi modul IoT pada setiap mesin produksi secara real-time
@@ -222,7 +237,7 @@ export default function Home() {
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-cyan-500/30 shadow-sm transition-colors active:scale-95"
               >
                 <Camera className="w-4 h-4" />
-                <span>Scan Kamera</span>
+                <span>Scan Barcode</span>
               </button>
 
               <button
@@ -230,10 +245,10 @@ export default function Home() {
                   setScannedForInstall(null);
                   setIsInstallModalOpen(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/30 transition-all active:scale-95"
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/25 transition-all active:scale-95"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>Pemasangan Baru</span>
+                <span>Instal Device Baru</span>
               </button>
             </div>
           </div>
@@ -243,7 +258,7 @@ export default function Home() {
             devices={devices}
             history={history}
             activeFilter={statusFilter}
-            onSelectFilter={(st) => setStatusFilter(st)}
+            onSelectFilter={setStatusFilter}
             onOpenHistory={() => {
               setHistoryFilterMcid('');
               setIsHistoryModalOpen(true);
@@ -251,30 +266,27 @@ export default function Home() {
           />
         </section>
 
-        {/* Layout: Main Devices Table + Recent Activity Sidebar */}
-        <section id="device-list-section" className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 items-start">
-          {/* Main Device List Table / Mobile Cards (3 Cols) */}
+        {/* Main Grid: Device List & Recent Activity Sidebar */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 items-start">
+          {/* Main Registry Table (Col 1-3) */}
           <div className="lg:col-span-3 space-y-4">
             <DeviceList
               devices={devices}
               statusFilter={statusFilter}
               factoryFilter={factoryFilter}
-              onChangeStatusFilter={(st) => setStatusFilter(st)}
-              onChangeFactoryFilter={(fac) => setFactoryFilter(fac)}
-              onOpenEditModal={handleOpenEditModal}
-              onOpenReplaceModal={(dev) => {
+              onChangeStatusFilter={setStatusFilter}
+              onChangeFactoryFilter={setFactoryFilter}
+              onOpenReplaceModal={(dev: Device) => {
                 setSelectedReplaceDevice(dev);
                 setScannedForReplace('');
                 setIsReplaceModalOpen(true);
               }}
-              onOpenStatusModal={(dev) => {
+              onOpenEditModal={handleOpenEditModal}
+              onOpenStatusModal={(dev: Device) => {
                 setSelectedStatusDevice(dev);
                 setIsStatusModalOpen(true);
               }}
-              onOpenHistoryModal={(mcid) => {
-                setHistoryFilterMcid(mcid);
-                setIsHistoryModalOpen(true);
-              }}
+              onOpenHistoryModal={(mcid: string) => handleQuickHistory(mcid)}
               onOpenInstallModal={() => {
                 setScannedForInstall(null);
                 setIsInstallModalOpen(true);
@@ -282,149 +294,120 @@ export default function Home() {
             />
           </div>
 
-          {/* Recent Activity Feed (1 Col) */}
-          <div className="lg:col-span-1 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3.5 sm:space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 sm:pb-3">
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-200">
-                  Aktivitas Terbaru
-                </h3>
+          {/* Quick Info & Audit Activity (Col 4) */}
+          <div className="space-y-4">
+            {/* Audit History Widget Card */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
+              <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-800">
+                <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs sm:text-sm">
+                  <History className="w-4 h-4 text-cyan-400" />
+                  <span>Aktivitas Terbaru</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setHistoryFilterMcid('');
+                    setIsHistoryModalOpen(true);
+                  }}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 transition-colors"
+                >
+                  <span>Semua</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  setHistoryFilterMcid('');
-                  setIsHistoryModalOpen(true);
-                }}
-                className="text-[11px] text-cyan-400 hover:underline"
-              >
-                Lihat Semua
-              </button>
+
+              {history.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-500">
+                  Belum ada log aktivitas tercatat.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {history.slice(0, 5).map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => handleQuickHistory(item.mcid)}
+                      className="group p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/40 transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between text-[11px] mb-1">
+                        <span className="font-mono font-semibold text-cyan-400 group-hover:text-cyan-300 transition-colors">
+                          {item.mcid}
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {formatDate(item.timestamp)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-300 line-clamp-1">
+                        <span className="text-slate-400">{item.eventType}:</span> {item.notes || `Update status ke ${item.newStatus}`}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                        <span className="truncate max-w-[140px]">{item.macAddress}</span>
+                        <span className="text-slate-400">{item.performedBy?.split('@')[0]}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {history.length === 0 ? (
-              <div className="text-center py-6 text-slate-500 text-xs">
-                Belum ada aktivitas tercatat.
+            {/* Quick Tips / Operational Rules Card */}
+            <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+              <div className="font-semibold text-slate-300 flex items-center gap-1.5">
+                <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Aturan Integritas Registrasi</span>
               </div>
-            ) : (
-              <div className="space-y-2.5 sm:space-y-3">
-                {history.slice(0, 5).map((act) => (
-                  <div
-                    key={act.id}
-                    onClick={() => handleQuickHistory(act.mcid)}
-                    className="p-2.5 sm:p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors cursor-pointer group active:scale-[0.98]"
-                  >
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="font-mono font-bold text-slate-200 group-hover:text-cyan-400 transition-colors">
-                        {act.mcid}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {act.eventType === 'INSTALL'
-                          ? 'Instal'
-                          : act.eventType === 'REPLACE_DEVICE'
-                          ? 'Ganti MAC'
-                          : act.eventType === 'REMOVE'
-                          ? 'Lepas'
-                          : 'Status'}
-                      </span>
-                    </div>
-
-                    <div className="text-[11px] text-slate-400 truncate">
-                      {act.eventType === 'REPLACE_DEVICE'
-                        ? `Ganti ke: ${act.macAddress}`
-                        : act.notes || act.machineModel}
-                    </div>
-
-                    <div className="text-[10px] text-slate-500 mt-1.5 flex items-center justify-between">
-                      <span>{formatDate(act.timestamp)}</span>
-                      <ArrowRight className="w-3 h-3 text-slate-600 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Quick Export Button */}
-            <div className="pt-1 sm:pt-2">
-              <button
-                onClick={() => setIsExportModalOpen(true)}
-                className="w-full py-2 px-3 text-xs font-medium rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 flex items-center justify-center gap-1.5 transition-colors active:scale-95"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Unduh Laporan CSV</span>
-              </button>
+              <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed text-slate-400">
+                <li>
+                  <strong className="text-slate-300">1 MCID = 1 MAC:</strong> Mengganti MAC otomatis mencatat riwayat pemindahan.
+                </li>
+                <li>
+                  <strong className="text-slate-300">Area Factory:</strong> Seluruh unit dipetakan ke Factory A1 hingga D2 beserta nomor Line.
+                </li>
+                <li>
+                  <strong className="text-slate-300">Sinkronisasi Real-Time:</strong> Setiap perubahan terjamin konsisten dan langsung aktif.
+                </li>
+              </ul>
             </div>
           </div>
-        </section>
+        </div>
       </main>
 
-      {/* MOBILE BOTTOM NAVIGATION DOCK (Smartphone Sticky Navigation Bar) */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-35 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-pb">
-        {/* Tab 1: Daftar */}
+      {/* Floating Bottom Quick Action Dock for Mobile Devices */}
+      <div className="sm:hidden fixed bottom-3 inset-x-3 z-30 flex items-center justify-around p-2 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl backdrop-blur-xl">
         <button
           onClick={() => {
-            setStatusFilter('ALL');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setScannerTarget('mcid');
+            setIsScannerOpen(true);
           }}
-          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-medium transition-colors ${
-            statusFilter === 'ALL' ? 'text-cyan-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
-          }`}
+          className="flex flex-col items-center gap-1 px-3 py-1.5 text-slate-300 hover:text-cyan-400 active:scale-95 transition-transform"
         >
-          <LayoutGrid className="w-4 h-4 mb-0.5" />
-          <span>Daftar</span>
+          <Camera className="w-5 h-5 text-cyan-400" />
+          <span className="text-[10px] font-medium">Scan Kamera</span>
         </button>
 
-        {/* Tab 2: Tambah Pasang */}
         <button
           onClick={() => {
             setScannedForInstall(null);
             setIsInstallModalOpen(true);
           }}
-          className="flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-medium text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold text-xs shadow-lg shadow-cyan-950/40 active:scale-95 transition-transform"
         >
-          <PlusCircle className="w-4 h-4 mb-0.5 text-cyan-400" />
-          <span>Pasang</span>
+          <PlusCircle className="w-4 h-4" />
+          <span>Instal Device</span>
         </button>
 
-        {/* Tab 3: Raised Circular Center Scan Button */}
-        <div className="relative -top-3">
-          <button
-            onClick={() => {
-              setScannerTarget('mcid');
-              setIsScannerOpen(true);
-            }}
-            className="p-3.5 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-950/60 border-2 border-slate-900 active:scale-90 transition-transform flex items-center justify-center"
-            title="Scan Kamera Barcode / QR"
-          >
-            <Camera className="w-5 h-5 text-white" />
-          </button>
-          <span className="block text-[9px] text-cyan-400 text-center font-bold mt-0.5">SCAN</span>
-        </div>
-
-        {/* Tab 4: CSV Export */}
         <button
           onClick={() => setIsExportModalOpen(true)}
-          className="flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-medium text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex flex-col items-center gap-1 px-3 py-1.5 text-slate-300 hover:text-emerald-400 active:scale-95 transition-transform"
         >
-          <Download className="w-4 h-4 mb-0.5 text-emerald-400" />
-          <span>CSV</span>
+          <Download className="w-5 h-5 text-emerald-400" />
+          <span className="text-[10px] font-medium">Export CSV</span>
         </button>
+      </div>
 
-        {/* Tab 5: Riwayat Audit */}
-        <button
-          onClick={() => {
-            setHistoryFilterMcid('');
-            setIsHistoryModalOpen(true);
-          }}
-          className="flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-medium text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          <History className="w-4 h-4 mb-0.5 text-indigo-400" />
-          <span>Riwayat</span>
-        </button>
-      </nav>
+      {/* ======================================================== */}
+      {/* MODAL DIALOGS */}
+      {/* ======================================================== */}
 
-      {/* MODALS */}
-      {/* 1. Barcode/QR Scanner */}
+      {/* 1. Barcode / QR Camera Scanner Modal */}
       <BarcodeScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
@@ -432,28 +415,32 @@ export default function Home() {
         onScanSuccess={handleScanSuccess}
       />
 
-      {/* 2. Installation Modal */}
+      {/* 2. New Device Installation Modal */}
       <InstallationModal
         isOpen={isInstallModalOpen}
-        onClose={() => setIsInstallModalOpen(false)}
+        onClose={() => {
+          setIsInstallModalOpen(false);
+          setScannedForInstall(null);
+        }}
         onOpenScanner={handleOpenScannerForInstall}
         initialMcid={scannedForInstall?.field === 'mcid' ? scannedForInstall.value : ''}
         initialMac={scannedForInstall?.field === 'mac' ? scannedForInstall.value : ''}
       />
 
-      {/* 3. Replace Device Modal */}
+      {/* 3. Device Replacement / MAC Swap Modal */}
       <ReplaceDeviceModal
         device={selectedReplaceDevice}
         isOpen={isReplaceModalOpen}
         onClose={() => {
           setIsReplaceModalOpen(false);
           setSelectedReplaceDevice(null);
+          setScannedForReplace('');
         }}
         onOpenScanner={handleOpenScannerForReplace}
         initialNewMac={scannedForReplace}
       />
 
-      {/* 3.5. Edit Device Modal (CRUD Edit & Delete) */}
+      {/* 4. Edit Device Modal (CRUD Edit) */}
       <EditDeviceModal
         device={selectedEditDevice}
         isOpen={isEditModalOpen}
@@ -465,7 +452,7 @@ export default function Home() {
         scannedNewMac={scannedForEdit}
       />
 
-      {/* 4. Status Change Modal */}
+      {/* 5. Status Change Modal */}
       <StatusChangeModal
         device={selectedStatusDevice}
         isOpen={isStatusModalOpen}
@@ -475,7 +462,7 @@ export default function Home() {
         }}
       />
 
-      {/* 5. Installation History Modal */}
+      {/* 6. Installation History Modal */}
       <HistoryModal
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
@@ -483,18 +470,12 @@ export default function Home() {
         initialMcidFilter={historyFilterMcid}
       />
 
-      {/* 6. Export CSV Modal */}
+      {/* 7. Export CSV Modal */}
       <ExportCsvModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         devices={devices}
         history={history}
-      />
-
-      {/* 7. Setup Guide Modal */}
-      <SetupGuideModal
-        isOpen={isSetupModalOpen}
-        onClose={() => setIsSetupModalOpen(false)}
       />
 
       {/* 8. Auth Modal */}

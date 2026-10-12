@@ -5,8 +5,7 @@ import {
   X,
   Edit3,
   Cpu,
-  MapPin,
-  FileText,
+  Layers,
   AlertCircle,
   CheckCircle2,
   Loader2,
@@ -17,7 +16,15 @@ import {
 } from 'lucide-react';
 import { Device, DeviceStatus, FACTORY_LIST, FactoryCode } from '@/types';
 import { editDevice, deleteDevice } from '@/lib/device-service';
-import { formatMacAddress, normalizeMacAddress, isValidMacAddress, extractFactory, getFactoryBadgeStyle } from '@/lib/utils';
+import {
+  formatMacAddress,
+  normalizeMacAddress,
+  isValidMacAddress,
+  extractFactory,
+  extractLine,
+  formatLocation,
+  getFactoryBadgeStyle,
+} from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
 interface EditDeviceModalProps {
@@ -39,7 +46,7 @@ export function EditDeviceModal({
   const [machineModel, setMachineModel] = useState('');
   const [macAddress, setMacAddress] = useState('');
   const [selectedFactory, setSelectedFactory] = useState<FactoryCode>('A1');
-  const [subLocation, setSubLocation] = useState('');
+  const [line, setLine] = useState('');
   const [status, setStatus] = useState<DeviceStatus>('Installed');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,12 +69,10 @@ export function EditDeviceModal({
       const extracted = extractFactory(device.location) as FactoryCode | null;
       if (extracted && FACTORY_LIST.includes(extracted)) {
         setSelectedFactory(extracted);
-        // Clean sublocation
-        const cleaned = device.location.replace(new RegExp(`^Factory\\s*${extracted}\\s*[-–]?\\s*`, 'i'), '').trim();
-        setSubLocation(cleaned);
+        setLine(extractLine(device.location));
       } else {
         setSelectedFactory('A1');
-        setSubLocation(device.location);
+        setLine(extractLine(device.location) || device.location);
       }
     }
   }, [device, isOpen]);
@@ -105,10 +110,7 @@ export function EditDeviceModal({
       return;
     }
 
-    // Combine factory and subLocation
-    const finalLocation = subLocation.trim()
-      ? `Factory ${selectedFactory} - ${subLocation.trim()}`
-      : `Factory ${selectedFactory}`;
+    const finalLocation = formatLocation(selectedFactory, line);
 
     setIsSubmitting(true);
     try {
@@ -233,10 +235,10 @@ export function EditDeviceModal({
           ) : null}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Field MCID (Read-Only) */}
+            {/* 1. Field MCID (Read-Only) */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Machine Control ID (MCID)
+                1. Machine Control ID (MCID)
               </label>
               <div className="relative">
                 <Cpu className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -250,10 +252,41 @@ export function EditDeviceModal({
               <p className="text-[10px] text-slate-500 mt-1">MCID merupakan primary key unik mesin pabrik.</p>
             </div>
 
-            {/* Field Model Mesin */}
+            {/* 2. Field MAC Address */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  2. MAC Address IoT Module <span className="text-cyan-400">*</span>
+                </label>
+                {onOpenScannerForEditMac && (
+                  <button
+                    type="button"
+                    onClick={onOpenScannerForEditMac}
+                    className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    <Scan className="w-3.5 h-3.5" />
+                    <span>Scan Kamera</span>
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={macAddress}
+                onChange={handleMacChange}
+                maxLength={17}
+                placeholder="XX:XX:XX:XX:XX:XX"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors uppercase"
+                required
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Jika MAC diubah, sistem akan memvalidasi aturan 1-to-1 secara atomik pada database.
+              </p>
+            </div>
+
+            {/* 3. Field Model Mesin */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Nama / Model Mesin
+                3. Model / Tipe Mesin <span className="text-cyan-400">*</span>
               </label>
               <input
                 type="text"
@@ -265,15 +298,15 @@ export function EditDeviceModal({
               />
             </div>
 
-            {/* Field Factory & Location */}
+            {/* 4. Field Factory Pabrik */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Pilih Factory Pabrik</span>
+                  <span>4. Factory Pabrik</span> <span className="text-cyan-400">*</span>
                 </label>
-                <span className="text-[11px] text-cyan-400 font-medium">
-                  Factory Aktif: <strong>{selectedFactory}</strong>
+                <span className="text-[11px] text-cyan-400 font-semibold font-mono">
+                  Factory {selectedFactory}
                 </span>
               </div>
 
@@ -298,55 +331,30 @@ export function EditDeviceModal({
                   );
                 })}
               </div>
-
-              {/* Sub-location / Section Line */}
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={subLocation}
-                  onChange={(e) => setSubLocation(e.target.value)}
-                  placeholder="Detail workshop / lini (Contoh: Machining Line A - Section 1)"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
-                />
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Lokasi tersimpan: <strong className="text-slate-300">Factory {selectedFactory}{subLocation ? ` - ${subLocation}` : ''}</strong>
-              </p>
             </div>
 
-            {/* Field MAC Address (With Scanner Support) */}
+            {/* 5. Field Line / Lini Produksi */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  MAC Address IoT Module
-                </label>
-                {onOpenScannerForEditMac && (
-                  <button
-                    type="button"
-                    onClick={onOpenScannerForEditMac}
-                    className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
-                  >
-                    <Scan className="w-3.5 h-3.5" />
-                    <span>Scan Kamera</span>
-                  </button>
-                )}
-              </div>
+              <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>5. Line / Lini Produksi</span>
+              </label>
               <input
                 type="text"
-                value={macAddress}
-                onChange={handleMacChange}
-                maxLength={17}
-                placeholder="XX:XX:XX:XX:XX:XX"
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors uppercase"
-                required
+                value={line}
+                onChange={(e) => setLine(e.target.value)}
+                placeholder="Contoh: Line 1, Stamping Line A, Assembly Line 3..."
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
               />
-              <p className="text-[10px] text-slate-500 mt-1">
-                Jika MAC diubah, sistem akan memvalidasi aturan 1-to-1 secara atomik pada database D1.
-              </p>
+              <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+                <span>Nomor atau nama lintasan mesin</span>
+                <span className="text-slate-400 font-mono">
+                  Lokasi: <strong className="text-cyan-400">{formatLocation(selectedFactory, line)}</strong>
+                </span>
+              </div>
             </div>
 
-            {/* Field Status */}
+            {/* Status Perangkat */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
                 Status Perangkat
@@ -373,44 +381,50 @@ export function EditDeviceModal({
               </div>
             </div>
 
-            {/* Field Notes */}
+            {/* 6. Catatan Teknis / Tambahan */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Catatan Teknis / Koreksi
+                6. Catatan Teknis (Opsional)
               </label>
-              <div className="relative">
-                <FileText className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  placeholder="Catatan perbaikan kesalahan input atau spesifikasi sensor..."
-                  className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 resize-none transition-colors"
-                />
-              </div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Catatan kendala, pergantian sensor, riwayat perbaikan..."
+                className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
+              />
             </div>
 
-            {/* Action Buttons */}
-            <div className="pt-2 flex items-center gap-2">
+            {/* Actions */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
               <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex-1 py-2.5 px-4 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isSubmitting || showDeleteConfirm}
+                className="px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/60 rounded-xl transition-colors flex items-center gap-1.5"
               >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                <span>Simpan Perubahan</span>
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus Data</span>
               </button>
 
-              {!showDeleteConfirm && (
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="py-2.5 px-3 text-xs font-medium rounded-xl bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-800/60 transition-colors"
-                  title="Hapus perangkat dari sistem"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 rounded-xl hover:bg-slate-800 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  Batal
                 </button>
-              )}
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/30 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Simpan Perubahan</span>
+                </button>
+              </div>
             </div>
           </form>
         </div>
