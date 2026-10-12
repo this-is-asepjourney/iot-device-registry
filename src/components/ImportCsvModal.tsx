@@ -10,9 +10,6 @@ import {
   CheckCircle2,
   Loader2,
   Trash2,
-  Building2,
-  Layers,
-  Info,
   Check,
   FileText,
 } from 'lucide-react';

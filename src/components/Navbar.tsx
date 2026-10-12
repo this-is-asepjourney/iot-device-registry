@@ -59,7 +59,9 @@ export function Navbar({
                       className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.25)] shrink-0"
                       title={
                         latencyMs !== undefined
-                          ? `Database terhubung & sinkron (Latensi: ${latencyMs}ms)`
+                          ? `Database terhubung & sinkron (Latensi: ${latencyMs}ms${lastSyncTime ? ` • Update: ${lastSyncTime}` : ''})`
+                          : lastSyncTime
+                          ? `Database terhubung & sinkron (Update: ${lastSyncTime})`
                           : 'Database terhubung & sinkron'
                       }
                     >
@@ -188,6 +190,9 @@ export function Navbar({
                   <span>Database Online & Sinkron</span>
                   {latencyMs !== undefined && (
                     <span className="font-mono text-[9px] text-emerald-300">({latencyMs}ms)</span>
+                  )}
+                  {lastSyncTime && (
+                    <span className="text-[9px] text-slate-400">· {lastSyncTime}</span>
                   )}
                 </div>
               </div>
