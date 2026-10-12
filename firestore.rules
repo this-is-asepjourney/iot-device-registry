@@ -1,0 +1,50 @@
+rules_version = '2';
+
+/**
+ * IoT Device Installation Registry - Firestore Security Rules
+ * 
+ * ATURAN KEAMANAN:
+ * 1. Hanya akun admin (atau user terautentikasi sesuai UID admin) yang diizinkan
+ *    membaca dan memanipulasi dokumen.
+ * 2. Jangan memublikasikan rules dengan akses terbuka (allow read, write: if true;).
+ * 3. Ganti REPLACE_WITH_YOUR_FIREBASE_AUTH_UID dengan UID akun admin Anda
+ *    yang ada di tab Firebase Console -> Authentication -> Users.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // GANTI UID BERIKUT DENGAN UID AKUN ADMIN KAMU DARI FIREBASE AUTHENTICATION
+      return isAuthenticated() && (
+        request.auth.uid == "REPLACE_WITH_YOUR_FIREBASE_AUTH_UID"
+      );
+    }
+
+    // Koleksi devices (MCID sebagai doc ID)
+    match /devices/{mcid} {
+      // Membaca dan menulis hanya oleh admin yang sah
+      allow read, write: if isAdmin();
+    }
+
+    // Koleksi macIndex (Normalized MAC Address tanpa titik dua sebagai doc ID)
+    match /macIndex/{normalizedMac} {
+      allow read, write: if isAdmin();
+    }
+
+    // Koleksi installationHistory (Audit log peristiwa instalasi, pergantian, pelepasan)
+    match /installationHistory/{historyId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Tolak semua akses ke koleksi lain yang tidak didefinisikan
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

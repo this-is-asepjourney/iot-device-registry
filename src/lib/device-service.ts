@@ -1,0 +1,204 @@
+import {
+  Device,
+  InstallationHistory,
+  InstallDevicePayload,
+  ReplaceDevicePayload,
+  UpdateStatusPayload,
+} from '@/types';
+
+type Listener = () => void;
+const changeListeners: Listener[] = [];
+
+export function notifyDataChange(): void {
+  changeListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (err) {
+      console.warn('Listener error:', err);
+    }
+  });
+}
+
+/**
+ * Fetch all devices from Cloudflare D1
+ */
+export async function fetchDevices(): Promise<Device[]> {
+  const res = await fetch('/api/devices', { cache: 'no-store' });
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memuat data perangkat dari D1.');
+  }
+  return json.data;
+}
+
+/**
+ * Fetch installation audit history from Cloudflare D1
+ */
+export async function fetchHistory(): Promise<InstallationHistory[]> {
+  const res = await fetch('/api/history', { cache: 'no-store' });
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memuat riwayat dari D1.');
+  }
+  return json.data;
+}
+
+/**
+ * Check Cloudflare D1 engine status
+ */
+export async function checkDatabaseStatus(): Promise<{ isCloudflareRemote: boolean; engine: string }> {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    const json = await res.json();
+    return {
+      isCloudflareRemote: Boolean(json.isCloudflareRemote),
+      engine: json.engine || 'Cloudflare D1 SQLite',
+    };
+  } catch {
+    return {
+      isCloudflareRemote: false,
+      engine: 'Local D1 SQLite Engine',
+    };
+  }
+}
+
+/**
+ * Install new IoT device (Atomic 1:1 transaction)
+ */
+export async function installDevice(payload: InstallDevicePayload): Promise<void> {
+  const res = await fetch('/api/devices/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal menyimpan instalasi.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Replace device / swap MAC (Atomic transaction)
+ */
+export async function replaceDevice(payload: ReplaceDevicePayload): Promise<void> {
+  const res = await fetch('/api/devices/replace', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal mengganti perangkat.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Update machine status or remove (Atomic transaction)
+ */
+export async function updateDeviceStatus(payload: UpdateStatusPayload): Promise<void> {
+  const res = await fetch('/api/devices/status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memperbarui status.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Reset demo database
+ */
+export async function resetDatabase(): Promise<void> {
+  const res = await fetch('/api/status', { method: 'POST' });
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal mereset database.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Real-time reactive subscription for Devices
+ */
+export function subscribeDevices(
+  onData: (devices: Device[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  let active = true;
+
+  const load = async () => {
+    try {
+      const data = await fetchDevices();
+      if (active) onData(data);
+    } catch (err) {
+      if (active && onError && err instanceof Error) {
+        onError(err);
+      }
+    }
+  };
+
+  load();
+
+  const listener = () => {
+    load();
+  };
+
+  changeListeners.push(listener);
+
+  // Poll periodically as fallback
+  const interval = setInterval(load, 5000);
+
+  return () => {
+    active = false;
+    clearInterval(interval);
+    const idx = changeListeners.indexOf(listener);
+    if (idx > -1) changeListeners.splice(idx, 1);
+  };
+}
+
+/**
+ * Real-time reactive subscription for History
+ */
+export function subscribeHistory(
+  onData: (history: InstallationHistory[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  let active = true;
+
+  const load = async () => {
+    try {
+      const data = await fetchHistory();
+      if (active) onData(data);
+    } catch (err) {
+      if (active && onError && err instanceof Error) {
+        onError(err);
+      }
+    }
+  };
+
+  load();
+
+  const listener = () => {
+    load();
+  };
+
+  changeListeners.push(listener);
+
+  // Poll periodically as fallback
+  const interval = setInterval(load, 5000);
+
+  return () => {
+    active = false;
+    clearInterval(interval);
+    const idx = changeListeners.indexOf(listener);
+    if (idx > -1) changeListeners.splice(idx, 1);
+  };
+}

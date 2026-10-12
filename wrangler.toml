@@ -1,0 +1,9 @@
+name = "iot-device-registry"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "iot-registry"
+database_id = "df96b5e7-89cc-4a44-8d66-2ae816c16399"
