@@ -15,6 +15,8 @@ interface DeviceRow {
   last_technician: string | null;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const { results } = await queryD1<DeviceRow>(`

@@ -3,6 +3,8 @@ import { queryD1, executeD1Batch } from '@/lib/d1';
 import { normalizeMcid } from '@/lib/utils';
 import { UpdateStatusPayload } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const payload: UpdateStatusPayload = await request.json();

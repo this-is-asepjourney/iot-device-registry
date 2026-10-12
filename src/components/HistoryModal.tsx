@@ -202,7 +202,7 @@ export function HistoryModal({
                 {/* Notes and Performed By */}
                 <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 pt-1 border-t border-slate-900/80 gap-2">
                   <span className="italic text-slate-400 truncate max-w-[160px] sm:max-w-md">
-                    "{item.notes || 'Tanpa catatan'}"
+                    &ldquo;{item.notes || 'Tanpa catatan'}&rdquo;
                   </span>
                   <div className="flex items-center gap-1 text-slate-400 shrink-0">
                     <UserCheck className="w-3 h-3 text-cyan-400" />

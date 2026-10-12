@@ -17,6 +17,8 @@ interface HistoryRow {
   performed_by: string;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const { results } = await queryD1<HistoryRow>(`

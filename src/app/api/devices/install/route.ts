@@ -3,6 +3,8 @@ import { queryD1, executeD1Batch } from '@/lib/d1';
 import { normalizeMcid, normalizeMacAddress, formatMacAddress, isValidMacAddress } from '@/lib/utils';
 import { InstallDevicePayload } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const payload: InstallDevicePayload = await request.json();

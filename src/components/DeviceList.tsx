@@ -13,7 +13,6 @@ import {
   MapPin,
   Clock,
   Layers,
-  ArrowRight,
 } from 'lucide-react';
 import { Device, DeviceStatus } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -223,7 +222,7 @@ export function DeviceList({
                   </div>
                   {device.notes && (
                     <div className="text-slate-500 italic truncate max-w-full pl-5">
-                      "{device.notes}"
+                      &ldquo;{device.notes}&rdquo;
                     </div>
                   )}
                   <div className="flex items-center gap-1 text-slate-500 pl-5 text-[10px]">

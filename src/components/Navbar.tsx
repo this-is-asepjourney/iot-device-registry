@@ -6,8 +6,6 @@ import {
   PlusCircle,
   Download,
   BookOpen,
-  LogOut,
-  LogIn,
   Database,
   Cloud,
   ShieldCheck,
@@ -31,7 +29,7 @@ export function Navbar({
   onOpenSetupModal,
   onOpenAuthModal,
 }: NavbarProps) {
-  const { user, demoUser, logout } = useAuth();
+  const { user, demoUser } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const activeEmail = user?.email || demoUser?.email || 'admin@plant.local';
 
@@ -102,14 +100,19 @@ export function Navbar({
 
               {/* User status */}
               <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                <div className="hidden lg:flex flex-col text-right">
+                <button
+                  type="button"
+                  onClick={onOpenAuthModal}
+                  className="hidden lg:flex flex-col text-right hover:opacity-80 transition-opacity"
+                  title="Klik untuk ubah identitas teknisi"
+                >
                   <span className="text-xs font-medium text-slate-200 truncate max-w-[130px]">
                     {activeEmail}
                   </span>
                   <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1 justify-end">
                     <ShieldCheck className="w-2.5 h-2.5" /> Teknisi
                   </span>
-                </div>
+                </button>
               </div>
             </div>
 

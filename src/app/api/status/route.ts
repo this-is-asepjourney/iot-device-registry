@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { isCloudflareD1Configured, resetLocalDatabase } from '@/lib/d1';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   return NextResponse.json({
     success: true,

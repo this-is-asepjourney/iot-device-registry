@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, BookOpen, ExternalLink, Copy, Check, Terminal, Database, Key, ShieldCheck } from 'lucide-react';
+import { X, ExternalLink, Copy, Check, Terminal, Database, Key, ShieldCheck } from 'lucide-react';
 
 interface SetupGuideModalProps {
   isOpen: boolean;

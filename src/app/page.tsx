@@ -8,7 +8,6 @@ import {
   BookOpen,
   RotateCcw,
   Activity,
-  ShieldCheck,
   Database,
   Cloud,
   ArrowRight,
