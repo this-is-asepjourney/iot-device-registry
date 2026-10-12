@@ -4,6 +4,8 @@ import {
   InstallDevicePayload,
   ReplaceDevicePayload,
   UpdateStatusPayload,
+  ImportDevicesPayload,
+  ImportDevicesResult,
 } from '@/types';
 
 type Listener = () => void;
@@ -154,6 +156,25 @@ export async function deleteDevice(payload: import('@/types').DeleteDevicePayloa
   }
   notifyDataChange();
 }
+
+/**
+ * Import batch devices from CSV/file data
+ */
+export async function importDevices(payload: ImportDevicesPayload): Promise<ImportDevicesResult> {
+  const res = await fetch('/api/devices/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success && !json.importedCount) {
+    throw new Error(json.error || 'Gagal mengimpor data perangkat.');
+  }
+  notifyDataChange();
+  return json;
+}
+
 
 /**
  * Reset demo database

@@ -127,6 +127,66 @@ export function downloadCsv(filename: string, headers: string[], rows: (string |
 }
 
 /**
+ * Parses raw CSV text into 2D array of string cells.
+ * Supports auto-detection of comma (,) or semicolon (;) delimiters, quoted cells, and multiline values.
+ */
+export function parseCsvText(rawContent: string): string[][] {
+  // Strip BOM if present
+  const text = rawContent.replace(/^\uFEFF/, '');
+  if (!text.trim()) return [];
+
+  // Detect delimiter by checking the header line
+  const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0) || '';
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const semiCount = (firstLine.match(/;/g) || []).length;
+  const delimiter = semiCount > commaCount ? ';' : ',';
+
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let insideQuote = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (insideQuote && nextChar === '"') {
+        currentCell += '"';
+        i++; // skip escaped quote
+      } else {
+        insideQuote = !insideQuote;
+      }
+    } else if (char === delimiter && !insideQuote) {
+      currentRow.push(currentCell.trim());
+      currentCell = '';
+    } else if ((char === '\r' || char === '\n') && !insideQuote) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      currentRow.push(currentCell.trim());
+      currentCell = '';
+      if (currentRow.some((c) => c.length > 0)) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+    } else {
+      currentCell += char;
+    }
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    if (currentRow.some((c) => c.length > 0)) {
+      rows.push(currentRow);
+    }
+  }
+
+  return rows;
+}
+
+
+/**
  * Extracts a factory code (A1, A2, B1, B2, C1, C2, D1, D2) from a location string.
  */
 export function extractFactory(locationStr?: string): string | null {

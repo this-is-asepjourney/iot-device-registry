@@ -5,12 +5,10 @@ import {
   Cpu,
   PlusCircle,
   Download,
+  UploadCloud,
   ShieldCheck,
   Menu,
   X,
-  Activity,
-  CheckCircle2,
-  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -20,6 +18,7 @@ interface NavbarProps {
   lastSyncTime?: string;
   onOpenInstallModal: () => void;
   onOpenExportModal: () => void;
+  onOpenImportModal: () => void;
   onOpenAuthModal: () => void;
 }
 
@@ -29,6 +28,7 @@ export function Navbar({
   lastSyncTime,
   onOpenInstallModal,
   onOpenExportModal,
+  onOpenImportModal,
   onOpenAuthModal,
 }: NavbarProps) {
   const { user, demoUser } = useAuth();
@@ -96,7 +96,7 @@ export function Navbar({
             </div>
 
             {/* Desktop Action Buttons */}
-            <div className="hidden sm:flex items-center gap-2 sm:gap-3">
+            <div className="hidden sm:flex items-center gap-2 sm:gap-2.5">
               {/* Export CSV Button */}
               <button
                 onClick={onOpenExportModal}
@@ -104,6 +104,16 @@ export function Navbar({
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Export CSV</span>
+              </button>
+
+              {/* Import CSV Button */}
+              <button
+                onClick={onOpenImportModal}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-800/60 hover:border-cyan-500/70 transition-colors active:scale-95 shadow-sm"
+                title="Import banyak perangkat dari file CSV"
+              >
+                <UploadCloud className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Import CSV</span>
               </button>
 
               {/* Install New Device Button */}
@@ -135,6 +145,14 @@ export function Navbar({
 
             {/* Mobile Header Actions */}
             <div className="flex sm:hidden items-center gap-1.5">
+              <button
+                onClick={onOpenImportModal}
+                className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-300 text-xs font-semibold active:scale-95 transition-transform"
+                title="Import CSV"
+              >
+                <UploadCloud className="w-4 h-4" />
+              </button>
+
               <button
                 onClick={onOpenInstallModal}
                 className="p-2 rounded-lg bg-cyan-600 text-white text-xs font-semibold shadow-md active:scale-95 transition-transform"
@@ -184,13 +202,13 @@ export function Navbar({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-3 gap-2 pt-1">
               <button
                 onClick={() => {
                   onOpenExportModal();
                   setMobileMenuOpen(false);
                 }}
-                className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs font-medium text-slate-200 active:bg-slate-850"
+                className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-200 active:bg-slate-850"
               >
                 <Download className="w-4 h-4 text-emerald-400" />
                 <span>Export CSV</span>
@@ -198,13 +216,24 @@ export function Navbar({
 
               <button
                 onClick={() => {
+                  onOpenImportModal();
+                  setMobileMenuOpen(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-cyan-950/50 border border-cyan-800/60 text-[11px] font-medium text-cyan-300 active:bg-cyan-900/60"
+              >
+                <UploadCloud className="w-4 h-4 text-cyan-400" />
+                <span>Import CSV</span>
+              </button>
+
+              <button
+                onClick={() => {
                   onOpenInstallModal();
                   setMobileMenuOpen(false);
                 }}
-                className="flex items-center justify-center gap-2 p-3 rounded-xl bg-cyan-600 text-white text-xs font-semibold shadow-md active:bg-cyan-500"
+                className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl bg-cyan-600 text-white text-[11px] font-semibold shadow-md active:bg-cyan-500"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>Instal Device</span>
+                <span>Instal</span>
               </button>
             </div>
           </div>

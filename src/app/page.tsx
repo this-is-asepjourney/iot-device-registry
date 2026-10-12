@@ -5,6 +5,7 @@ import {
   Camera,
   PlusCircle,
   Download,
+  UploadCloud,
   Activity,
   ArrowRight,
   History,
@@ -27,6 +28,7 @@ import { StatusChangeModal } from '@/components/StatusChangeModal';
 import { EditDeviceModal } from '@/components/EditDeviceModal';
 import { HistoryModal } from '@/components/HistoryModal';
 import { ExportCsvModal } from '@/components/ExportCsvModal';
+import { ImportCsvModal } from '@/components/ImportCsvModal';
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal';
 import { AuthModal } from '@/components/AuthModal';
 import { formatDate } from '@/lib/utils';
@@ -55,6 +57,7 @@ export default function Home() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyFilterMcid, setHistoryFilterMcid] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Scanner modal state
@@ -144,6 +147,7 @@ export default function Home() {
           setIsInstallModalOpen(true);
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
@@ -238,6 +242,15 @@ export default function Home() {
               >
                 <Camera className="w-4 h-4" />
                 <span>Scan Barcode</span>
+              </button>
+
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/60 hover:border-cyan-500/70 shadow-sm transition-all active:scale-95"
+                title="Import banyak perangkat sekaligus dari file CSV"
+              >
+                <UploadCloud className="w-4 h-4 text-cyan-400" />
+                <span>Import CSV</span>
               </button>
 
               <button
@@ -478,7 +491,14 @@ export default function Home() {
         history={history}
       />
 
-      {/* 8. Auth Modal */}
+      {/* 8. Import CSV Modal */}
+      <ImportCsvModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        existingDevices={devices}
+      />
+
+      {/* 9. Auth Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}

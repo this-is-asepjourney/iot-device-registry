@@ -78,3 +78,27 @@ export interface DeleteDevicePayload {
   technicianEmail: string;
   notes?: string;
 }
+
+export interface ImportDeviceItem {
+  mcid: string;
+  macAddress: string;
+  machineModel: string;
+  factory: FactoryCode;
+  line?: string;
+  notes?: string;
+}
+
+export interface ImportDevicesPayload {
+  items: ImportDeviceItem[];
+  technicianEmail: string;
+}
+
+export interface ImportDevicesResult {
+  success: boolean;
+  totalRequested: number;
+  importedCount: number;
+  skippedCount: number;
+  errors?: string[];
+  message: string;
+}
+
