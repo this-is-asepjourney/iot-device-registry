@@ -114,6 +114,40 @@ export async function updateDeviceStatus(payload: UpdateStatusPayload): Promise<
 }
 
 /**
+ * Edit existing device details (CRUD Update with 1:1 validation)
+ */
+export async function editDevice(payload: import('@/types').EditDevicePayload): Promise<void> {
+  const res = await fetch('/api/devices/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memperbarui data perangkat.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Delete device from registry (CRUD Delete)
+ */
+export async function deleteDevice(payload: import('@/types').DeleteDevicePayload): Promise<void> {
+  const res = await fetch('/api/devices/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal menghapus perangkat.');
+  }
+  notifyDataChange();
+}
+
+/**
  * Reset demo database
  */
 export async function resetDatabase(): Promise<void> {

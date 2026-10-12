@@ -59,3 +59,22 @@ export interface UpdateStatusPayload {
   notes?: string;
   technicianEmail: string;
 }
+
+export const FACTORY_LIST = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'] as const;
+export type FactoryCode = (typeof FACTORY_LIST)[number];
+
+export interface EditDevicePayload {
+  mcid: string;
+  macAddress: string;
+  machineModel: string;
+  location: string;
+  status: DeviceStatus;
+  notes?: string;
+  technicianEmail: string;
+}
+
+export interface DeleteDevicePayload {
+  mcid: string;
+  technicianEmail: string;
+  notes?: string;
+}

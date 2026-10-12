@@ -27,6 +27,7 @@ import { DeviceList } from '@/components/DeviceList';
 import { InstallationModal } from '@/components/InstallationModal';
 import { ReplaceDeviceModal } from '@/components/ReplaceDeviceModal';
 import { StatusChangeModal } from '@/components/StatusChangeModal';
+import { EditDeviceModal } from '@/components/EditDeviceModal';
 import { HistoryModal } from '@/components/HistoryModal';
 import { ExportCsvModal } from '@/components/ExportCsvModal';
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal';
@@ -45,9 +46,12 @@ export default function Home() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [history, setHistory] = useState<InstallationHistory[]>([]);
   const [statusFilter, setStatusFilter] = useState<'ALL' | DeviceStatus>('ALL');
+  const [factoryFilter, setFactoryFilter] = useState<'ALL' | string>('ALL');
 
   // Modals state
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedEditDevice, setSelectedEditDevice] = useState<Device | null>(null);
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
   const [selectedReplaceDevice, setSelectedReplaceDevice] = useState<Device | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -63,6 +67,7 @@ export default function Home() {
   const [scannerTarget, setScannerTarget] = useState<'mcid' | 'mac'>('mcid');
   const [scannedForInstall, setScannedForInstall] = useState<{ field: 'mcid' | 'mac'; value: string } | null>(null);
   const [scannedForReplace, setScannedForReplace] = useState<string>('');
+  const [scannedForEdit, setScannedForEdit] = useState<string>('');
 
   // Check database mode and subscribe to data
   useEffect(() => {
@@ -93,8 +98,21 @@ export default function Home() {
     setIsScannerOpen(true);
   };
 
+  const handleOpenScannerForEdit = () => {
+    setScannerTarget('mac');
+    setIsScannerOpen(true);
+  };
+
+  const handleOpenEditModal = (dev: Device) => {
+    setSelectedEditDevice(dev);
+    setScannedForEdit('');
+    setIsEditModalOpen(true);
+  };
+
   const handleScanSuccess = (scannedValue: string) => {
-    if (isReplaceModalOpen) {
+    if (isEditModalOpen) {
+      setScannedForEdit(scannedValue);
+    } else if (isReplaceModalOpen) {
       setScannedForReplace(scannedValue);
     } else {
       setScannedForInstall({ field: scannerTarget, value: scannedValue });
@@ -240,7 +258,10 @@ export default function Home() {
             <DeviceList
               devices={devices}
               statusFilter={statusFilter}
+              factoryFilter={factoryFilter}
               onChangeStatusFilter={(st) => setStatusFilter(st)}
+              onChangeFactoryFilter={(fac) => setFactoryFilter(fac)}
+              onOpenEditModal={handleOpenEditModal}
               onOpenReplaceModal={(dev) => {
                 setSelectedReplaceDevice(dev);
                 setScannedForReplace('');
@@ -430,6 +451,18 @@ export default function Home() {
         }}
         onOpenScanner={handleOpenScannerForReplace}
         initialNewMac={scannedForReplace}
+      />
+
+      {/* 3.5. Edit Device Modal (CRUD Edit & Delete) */}
+      <EditDeviceModal
+        device={selectedEditDevice}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedEditDevice(null);
+        }}
+        onOpenScannerForEditMac={handleOpenScannerForEdit}
+        scannedNewMac={scannedForEdit}
       />
 
       {/* 4. Status Change Modal */}

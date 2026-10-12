@@ -125,3 +125,39 @@ export function downloadCsv(filename: string, headers: string[], rows: (string |
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Extracts a factory code (A1, A2, B1, B2, C1, C2, D1, D2) from a location string.
+ */
+export function extractFactory(locationStr?: string): string | null {
+  if (!locationStr) return null;
+  const match = locationStr.match(/\b([A-D][1-2])\b/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+/**
+ * Returns tailored Tailwind CSS badge classes for each factory code.
+ */
+export function getFactoryBadgeStyle(factoryCode?: string | null): { bg: string; text: string; border: string } {
+  switch (factoryCode?.toUpperCase()) {
+    case 'A1':
+      return { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30' };
+    case 'A2':
+      return { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' };
+    case 'B1':
+      return { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' };
+    case 'B2':
+      return { bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30' };
+    case 'C1':
+      return { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' };
+    case 'C2':
+      return { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' };
+    case 'D1':
+      return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' };
+    case 'D2':
+      return { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/30' };
+    default:
+      return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-700' };
+  }
+}
+
