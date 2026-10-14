@@ -66,6 +66,12 @@ export async function POST(request: Request) {
       }
       batchSeenMcid.add(normMcid);
 
+      // 3. Check if machine already has a pending plan
+      if (pendingPlansSet.has(normMcid)) {
+        errors.push(`Baris ${rowNum}: Mesin [${normMcid}] sudah memiliki rencana aktif (status: Planned).`);
+        continue;
+      }
+
       // Format location if factory or line provided
       let finalLocation = '';
       if (item.factory || item.line) {

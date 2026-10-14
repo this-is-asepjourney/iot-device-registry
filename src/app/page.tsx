@@ -548,15 +548,7 @@ export default function Home() {
       {/* MODAL DIALOGS */}
       {/* ======================================================== */}
 
-      {/* 1. Barcode / QR Camera Scanner Modal */}
-      <BarcodeScannerModal
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        targetField={scannerTarget}
-        onScanSuccess={handleScanSuccess}
-      />
-
-      {/* 2. New Device Installation Modal */}
+      {/* 1. New Device Installation Modal */}
       <InstallationModal
         isOpen={isInstallModalOpen}
         onClose={() => {
@@ -568,7 +560,7 @@ export default function Home() {
         initialMac={scannedForInstall?.field === 'mac' ? scannedForInstall.value : ''}
       />
 
-      {/* 3. Device Replacement / MAC Swap Modal */}
+      {/* 2. Device Replacement / MAC Swap Modal */}
       <ReplaceDeviceModal
         device={selectedReplaceDevice}
         isOpen={isReplaceModalOpen}
@@ -581,7 +573,7 @@ export default function Home() {
         initialNewMac={scannedForReplace}
       />
 
-      {/* 4. Edit Device Modal (CRUD Edit) */}
+      {/* 3. Edit Device Modal (CRUD Edit) */}
       <EditDeviceModal
         device={selectedEditDevice}
         isOpen={isEditModalOpen}
@@ -593,7 +585,7 @@ export default function Home() {
         scannedNewMac={scannedForEdit}
       />
 
-      {/* 5. Status Change Modal */}
+      {/* 4. Status Change Modal */}
       <StatusChangeModal
         device={selectedStatusDevice}
         isOpen={isStatusModalOpen}
@@ -603,7 +595,7 @@ export default function Home() {
         }}
       />
 
-      {/* 6. Installation History Modal */}
+      {/* 5. Installation History Modal */}
       <HistoryModal
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
@@ -611,7 +603,7 @@ export default function Home() {
         initialMcidFilter={historyFilterMcid}
       />
 
-      {/* 7. Export CSV Modal */}
+      {/* 6. Export CSV Modal */}
       <ExportCsvModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
@@ -619,32 +611,32 @@ export default function Home() {
         history={history}
       />
 
-      {/* 8. Import CSV Modal */}
+      {/* 7. Import CSV Modal */}
       <ImportCsvModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         existingDevices={devices}
       />
 
-      {/* 9. Auth Modal */}
+      {/* 8. Auth Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
 
-      {/* 10. Planning: Import Plan Modal (Excel / CSV) */}
+      {/* 9. Planning: Import Plan Modal (Excel / CSV) */}
       <ImportPlanModal
         isOpen={isImportPlanOpen}
         onClose={() => setIsImportPlanOpen(false)}
       />
 
-      {/* 11. Planning: Create Manual Plan Modal */}
+      {/* 10. Planning: Create Manual Plan Modal */}
       <CreatePlanModal
         isOpen={isCreatePlanOpen}
         onClose={() => setIsCreatePlanOpen(false)}
       />
 
-      {/* 12. Planning: Edit Plan Modal */}
+      {/* 11. Planning: Edit Plan Modal */}
       <EditPlanModal
         plan={selectedEditPlan}
         isOpen={isEditPlanOpen}
@@ -654,7 +646,7 @@ export default function Home() {
         }}
       />
 
-      {/* 13. Planning: Mapping & Pasang Modul IoT Modal (Input MAC Address) */}
+      {/* 12. Planning: Mapping & Pasang Modul IoT Modal (Input MAC Address) */}
       <MapDeviceModal
         plan={selectedMapPlan}
         isOpen={isMapModalOpen}
@@ -666,6 +658,14 @@ export default function Home() {
         onOpenScanner={handleOpenScannerForMap}
         scannedMac={scannedForMapMac}
         existingDevices={devices}
+      />
+
+      {/* 13. Barcode / QR Camera Scanner Modal (Always rendered top-most) */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        targetField={scannerTarget}
+        onScanSuccess={handleScanSuccess}
       />
     </div>
   );

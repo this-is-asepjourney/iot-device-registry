@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Clock,
   Search,
-  Filter,
   PlusCircle,
   UploadCloud,
   Download,
@@ -14,22 +13,16 @@ import {
   Cpu,
   Edit3,
   Trash2,
-  Layers,
-  Building2,
-  AlertCircle,
-  Sparkles,
   ArrowRight,
   TrendingUp,
 } from 'lucide-react';
 import { InstallationPlan, PlanStatus, FACTORY_LIST } from '@/types';
 import {
-  formatDate,
   extractFactory,
   getFactoryBadgeStyle,
 } from '@/lib/utils';
 import {
   downloadPlanTemplateExcel,
-  downloadPlanTemplateCsv,
   exportPlansToExcel,
 } from '@/lib/excel-utils';
 import { deletePlan } from '@/lib/device-service';

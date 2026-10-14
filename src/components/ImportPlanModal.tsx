@@ -12,7 +12,6 @@ import {
   Trash2,
   Check,
   FileText,
-  HelpCircle,
 } from 'lucide-react';
 import {
   downloadPlanTemplateExcel,
