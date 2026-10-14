@@ -47,3 +47,22 @@ CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
 CREATE INDEX IF NOT EXISTS idx_mac_index_mcid ON mac_index(mcid);
 CREATE INDEX IF NOT EXISTS idx_history_mcid ON installation_history(mcid);
 CREATE INDEX IF NOT EXISTS idx_history_timestamp ON installation_history(timestamp DESC);
+
+-- 4. Tabel installation_plans: Rencana / request instalasi modul IoT
+CREATE TABLE IF NOT EXISTS installation_plans (
+  id TEXT PRIMARY KEY,
+  mcid TEXT NOT NULL,
+  machine_model TEXT,
+  location TEXT,
+  status TEXT NOT NULL CHECK(status IN ('Planned', 'Installed', 'Cancelled')) DEFAULT 'Planned',
+  target_date TEXT,
+  notes TEXT,
+  installed_mac TEXT,
+  installed_at TEXT,
+  installed_by TEXT,
+  created_at TEXT NOT NULL,
+  created_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_plans_mcid ON installation_plans(mcid);
+CREATE INDEX IF NOT EXISTS idx_plans_status ON installation_plans(status);

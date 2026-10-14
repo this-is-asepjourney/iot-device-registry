@@ -104,6 +104,10 @@ export async function POST(request: Request) {
           payload.technicianEmail || '',
         ],
       },
+      {
+        sql: `UPDATE installation_plans SET status = 'Installed', installed_mac = ?, installed_at = ?, installed_by = ? WHERE mcid = ? AND status = 'Planned'`,
+        params: [formattedMac, now, payload.technicianEmail || '', normMcid],
+      },
     ]);
 
     return NextResponse.json({

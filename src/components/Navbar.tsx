@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Menu,
   X,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -16,6 +17,9 @@ interface NavbarProps {
   dbConnected?: boolean;
   latencyMs?: number;
   lastSyncTime?: string;
+  activeTab?: 'registry' | 'planning';
+  onTabChange?: (tab: 'registry' | 'planning') => void;
+  pendingPlanCount?: number;
   onOpenInstallModal: () => void;
   onOpenExportModal: () => void;
   onOpenImportModal: () => void;
@@ -26,6 +30,9 @@ export function Navbar({
   dbConnected = true,
   latencyMs,
   lastSyncTime,
+  activeTab = 'registry',
+  onTabChange,
+  pendingPlanCount = 0,
   onOpenInstallModal,
   onOpenExportModal,
   onOpenImportModal,
@@ -97,6 +104,38 @@ export function Navbar({
               </div>
             </div>
 
+            {/* Desktop View Switcher */}
+            <div className="hidden md:flex items-center rounded-xl bg-slate-900/90 p-1 border border-slate-800 text-xs">
+              <button
+                onClick={() => onTabChange?.('registry')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                  activeTab === 'registry'
+                    ? 'bg-slate-800 text-cyan-400 shadow-sm border border-cyan-500/20'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span>IoT Registry</span>
+              </button>
+
+              <button
+                onClick={() => onTabChange?.('planning')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                  activeTab === 'planning'
+                    ? 'bg-slate-800 text-amber-400 shadow-sm border border-amber-500/20'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Planning Pemasangan</span>
+                {pendingPlanCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {pendingPlanCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
             {/* Desktop Action Buttons */}
             <div className="hidden sm:flex items-center gap-2 sm:gap-2.5">
               {/* Export CSV Button */}
@@ -148,11 +187,15 @@ export function Navbar({
             {/* Mobile Header Actions */}
             <div className="flex sm:hidden items-center gap-1.5">
               <button
-                onClick={onOpenImportModal}
-                className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-300 text-xs font-semibold active:scale-95 transition-transform"
-                title="Import CSV"
+                onClick={() => onTabChange?.(activeTab === 'registry' ? 'planning' : 'registry')}
+                className={`p-2 rounded-lg border text-xs font-semibold active:scale-95 transition-transform ${
+                  activeTab === 'planning'
+                    ? 'bg-amber-950/60 border-amber-800/50 text-amber-300'
+                    : 'bg-slate-900 border-slate-800 text-slate-300'
+                }`}
+                title="Ganti Tampilan"
               >
-                <UploadCloud className="w-4 h-4" />
+                {activeTab === 'planning' ? <Calendar className="w-4 h-4 text-amber-400" /> : <Cpu className="w-4 h-4 text-cyan-400" />}
               </button>
 
               <button
@@ -179,6 +222,43 @@ export function Navbar({
       {mobileMenuOpen && (
         <div className="sm:hidden fixed inset-x-0 top-14 z-30 bg-slate-950/95 border-b border-slate-800 p-4 backdrop-blur-xl animate-in slide-in-from-top-2 duration-150 shadow-2xl">
           <div className="space-y-3">
+            {/* View Switcher in Mobile Drawer */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
+              <button
+                onClick={() => {
+                  onTabChange?.('registry');
+                  setMobileMenuOpen(false);
+                }}
+                className={`flex items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-semibold transition-colors ${
+                  activeTab === 'registry'
+                    ? 'bg-slate-800 text-cyan-400 border border-cyan-500/20'
+                    : 'text-slate-400'
+                }`}
+              >
+                <Cpu className="w-4 h-4" />
+                <span>IoT Registry</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  onTabChange?.('planning');
+                  setMobileMenuOpen(false);
+                }}
+                className={`flex items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-semibold transition-colors ${
+                  activeTab === 'planning'
+                    ? 'bg-slate-800 text-amber-400 border border-amber-500/20'
+                    : 'text-slate-400'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Planning</span>
+                {pendingPlanCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
+                    {pendingPlanCount}
+                  </span>
+                )}
+              </button>
+            </div>
             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold text-slate-200 truncate">{activeEmail}</div>

@@ -6,6 +6,13 @@ import {
   UpdateStatusPayload,
   ImportDevicesPayload,
   ImportDevicesResult,
+  InstallationPlan,
+  CreatePlanPayload,
+  EditPlanPayload,
+  DeletePlanPayload,
+  CompletePlanPayload,
+  ImportPlansPayload,
+  ImportPlansResult,
 } from '@/types';
 
 type Listener = () => void;
@@ -265,3 +272,145 @@ export function subscribeHistory(
     if (idx > -1) changeListeners.splice(idx, 1);
   };
 }
+
+// ==========================================
+// INSTALLATION PLANNING SERVICE FUNCTIONS
+// ==========================================
+
+/**
+ * Fetch all installation plans
+ */
+export async function fetchPlans(): Promise<InstallationPlan[]> {
+  const res = await fetch('/api/plans', { cache: 'no-store' });
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memuat rencana pemasangan.');
+  }
+  return json.data;
+}
+
+/**
+ * Create a new installation plan manually
+ */
+export async function createPlan(payload: CreatePlanPayload): Promise<InstallationPlan> {
+  const res = await fetch('/api/plans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal membuat rencana pemasangan.');
+  }
+  notifyDataChange();
+  return json.data;
+}
+
+/**
+ * Edit an existing installation plan
+ */
+export async function editPlan(payload: EditPlanPayload): Promise<void> {
+  const res = await fetch('/api/plans/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memperbarui rencana pemasangan.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Delete an installation plan
+ */
+export async function deletePlan(payload: DeletePlanPayload): Promise<void> {
+  const res = await fetch('/api/plans/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal menghapus rencana pemasangan.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Complete a plan by mapping and installing IoT device with MAC Address
+ */
+export async function completePlan(payload: CompletePlanPayload): Promise<void> {
+  const res = await fetch('/api/plans/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal memetakan dan menyelesaikan instalasi.');
+  }
+  notifyDataChange();
+}
+
+/**
+ * Import batch installation plans from Excel / CSV
+ */
+export async function importPlans(payload: ImportPlansPayload): Promise<ImportPlansResult> {
+  const res = await fetch('/api/plans/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json();
+  if (!json.success && !json.importedCount) {
+    throw new Error(json.error || 'Gagal mengimpor data rencana pemasangan.');
+  }
+  notifyDataChange();
+  return json;
+}
+
+/**
+ * Real-time reactive subscription for Installation Plans
+ */
+export function subscribePlans(
+  onData: (plans: InstallationPlan[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  let active = true;
+
+  const load = async () => {
+    try {
+      const data = await fetchPlans();
+      if (active) onData(data);
+    } catch (err) {
+      if (active && onError && err instanceof Error) {
+        onError(err);
+      }
+    }
+  };
+
+  load();
+
+  const listener = () => {
+    load();
+  };
+
+  changeListeners.push(listener);
+
+  const interval = setInterval(load, 5000);
+
+  return () => {
+    active = false;
+    clearInterval(interval);
+    const idx = changeListeners.indexOf(listener);
+    if (idx > -1) changeListeners.splice(idx, 1);
+  };
+}
+

@@ -102,3 +102,82 @@ export interface ImportDevicesResult {
   message: string;
 }
 
+// ==========================================
+// INSTALLATION PLANNING TYPES
+// ==========================================
+
+export type PlanStatus = 'Planned' | 'Installed' | 'Cancelled';
+
+export interface InstallationPlan {
+  id: string; // Document ID (e.g., plan-1712345678)
+  mcid: string; // Machine Control ID (mandatory)
+  machineModel?: string;
+  location?: string;
+  status: PlanStatus;
+  targetDate?: string; // YYYY-MM-DD
+  notes?: string;
+  installedMac?: string; // Formatted MAC when mapped
+  installedAt?: string; // ISO 8601 when mapped
+  installedBy?: string; // Technician email
+  createdAt: string; // ISO 8601
+  createdBy?: string;
+}
+
+export interface CreatePlanPayload {
+  mcid: string;
+  machineModel?: string;
+  location?: string;
+  targetDate?: string;
+  notes?: string;
+  technicianEmail?: string;
+}
+
+export interface EditPlanPayload {
+  id: string;
+  mcid: string;
+  machineModel?: string;
+  location?: string;
+  targetDate?: string;
+  notes?: string;
+  status?: PlanStatus;
+  technicianEmail?: string;
+}
+
+export interface DeletePlanPayload {
+  id: string;
+  technicianEmail?: string;
+}
+
+export interface CompletePlanPayload {
+  planId: string;
+  mcid: string;
+  macAddress: string;
+  machineModel?: string;
+  location?: string;
+  notes?: string;
+  technicianEmail: string;
+}
+
+export interface ImportPlanItem {
+  mcid: string;
+  machineModel?: string;
+  factory?: FactoryCode | string;
+  line?: string;
+  targetDate?: string;
+  notes?: string;
+}
+
+export interface ImportPlansPayload {
+  items: ImportPlanItem[];
+  technicianEmail?: string;
+}
+
+export interface ImportPlansResult {
+  success: boolean;
+  totalRequested: number;
+  importedCount: number;
+  skippedCount: number;
+  errors?: string[];
+  message: string;
+}
+

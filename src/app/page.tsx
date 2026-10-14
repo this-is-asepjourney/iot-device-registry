@@ -11,11 +11,14 @@ import {
   History,
   LayoutGrid,
   RefreshCw,
+  Cpu,
+  Calendar,
 } from 'lucide-react';
-import { Device, InstallationHistory, DeviceStatus } from '@/types';
+import { Device, InstallationHistory, DeviceStatus, InstallationPlan } from '@/types';
 import {
   subscribeDevices,
   subscribeHistory,
+  subscribePlans,
   checkDatabaseStatus,
   DatabaseSyncStatus,
 } from '@/lib/device-service';
@@ -31,6 +34,11 @@ import { ExportCsvModal } from '@/components/ExportCsvModal';
 import { ImportCsvModal } from '@/components/ImportCsvModal';
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal';
 import { AuthModal } from '@/components/AuthModal';
+import { PlanningList } from '@/components/PlanningList';
+import { ImportPlanModal } from '@/components/ImportPlanModal';
+import { CreatePlanModal } from '@/components/CreatePlanModal';
+import { EditPlanModal } from '@/components/EditPlanModal';
+import { MapDeviceModal } from '@/components/MapDeviceModal';
 import { formatDate } from '@/lib/utils';
 
 export default function Home() {
@@ -40,9 +48,13 @@ export default function Home() {
     lastSyncTime: '',
   });
 
+  // View mode
+  const [activeView, setActiveView] = useState<'registry' | 'planning'>('registry');
+
   // Data states
   const [devices, setDevices] = useState<Device[]>([]);
   const [history, setHistory] = useState<InstallationHistory[]>([]);
+  const [plans, setPlans] = useState<InstallationPlan[]>([]);
   const [statusFilter, setStatusFilter] = useState<'ALL' | DeviceStatus>('ALL');
   const [factoryFilter, setFactoryFilter] = useState<'ALL' | string>('ALL');
 
@@ -59,6 +71,15 @@ export default function Home() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Planning modals state
+  const [isImportPlanOpen, setIsImportPlanOpen] = useState(false);
+  const [isCreatePlanOpen, setIsCreatePlanOpen] = useState(false);
+  const [isEditPlanOpen, setIsEditPlanOpen] = useState(false);
+  const [selectedEditPlan, setSelectedEditPlan] = useState<InstallationPlan | null>(null);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [selectedMapPlan, setSelectedMapPlan] = useState<InstallationPlan | null>(null);
+  const [scannedForMapMac, setScannedForMapMac] = useState('');
 
   // Scanner modal state
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -87,10 +108,15 @@ export default function Home() {
       setHistory(hist);
     });
 
+    const unsubPlans = subscribePlans((planList) => {
+      setPlans(planList);
+    });
+
     return () => {
       clearInterval(interval);
       unsubDevices();
       unsubHistory();
+      unsubPlans();
     };
   }, []);
 
@@ -116,8 +142,15 @@ export default function Home() {
     setIsEditModalOpen(true);
   };
 
+  const handleOpenScannerForMap = () => {
+    setScannerTarget('mac');
+    setIsScannerOpen(true);
+  };
+
   const handleScanSuccess = (scannedValue: string) => {
-    if (isEditModalOpen) {
+    if (isMapModalOpen) {
+      setScannedForMapMac(scannedValue);
+    } else if (isEditModalOpen) {
       setScannedForEdit(scannedValue);
     } else if (isReplaceModalOpen) {
       setScannedForReplace(scannedValue);
@@ -135,6 +168,8 @@ export default function Home() {
     setIsHistoryModalOpen(true);
   };
 
+  const pendingPlanCount = plans.filter((p) => p.status === 'Planned').length;
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       {/* Navigation */}
@@ -142,6 +177,9 @@ export default function Home() {
         dbConnected={dbSync.connected}
         latencyMs={dbSync.latencyMs}
         lastSyncTime={dbSync.lastSyncTime}
+        activeTab={activeView}
+        onTabChange={setActiveView}
+        pendingPlanCount={pendingPlanCount}
         onOpenInstallModal={() => {
           setScannedForInstall(null);
           setIsInstallModalOpen(true);
@@ -219,201 +257,291 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Dashboard Header & KPI Metrics */}
-        <section className="space-y-3 sm:space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
-            <div>
-              <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                <span>Dashboard Pemetaan IoT Mesin Pabrik</span>
-              </h2>
-              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                Monitor status instalasi modul IoT pada setiap mesin produksi secara real-time
-              </p>
-            </div>
+        {/* View Switcher Tabs Banner */}
+        <div className="flex items-center justify-between p-1.5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg">
+          <div className="flex items-center gap-1.5 flex-1 sm:flex-initial">
+            <button
+              onClick={() => setActiveView('registry')}
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                activeView === 'registry'
+                  ? 'bg-slate-800 text-cyan-400 shadow-sm border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Cpu className="w-4 h-4" />
+              <span>IoT Registry ({devices.length})</span>
+            </button>
 
-            {/* Quick Action Buttons (visible on sm+) */}
-            <div className="hidden sm:flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setScannerTarget('mcid');
-                  setIsScannerOpen(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-cyan-500/30 shadow-sm transition-colors active:scale-95"
-              >
-                <Camera className="w-4 h-4" />
-                <span>Scan Barcode</span>
-              </button>
-
-              <button
-                onClick={() => setIsImportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/60 hover:border-cyan-500/70 shadow-sm transition-all active:scale-95"
-                title="Import banyak perangkat sekaligus dari file CSV"
-              >
-                <UploadCloud className="w-4 h-4 text-cyan-400" />
-                <span>Import CSV</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setScannedForInstall(null);
-                  setIsInstallModalOpen(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/25 transition-all active:scale-95"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Instal Device Baru</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Metric Summary Cards */}
-          <DashboardSummary
-            devices={devices}
-            history={history}
-            activeFilter={statusFilter}
-            onSelectFilter={setStatusFilter}
-            onOpenHistory={() => {
-              setHistoryFilterMcid('');
-              setIsHistoryModalOpen(true);
-            }}
-          />
-        </section>
-
-        {/* Main Grid: Device List & Recent Activity Sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 items-start">
-          {/* Main Registry Table (Col 1-3) */}
-          <div className="lg:col-span-3 space-y-4">
-            <DeviceList
-              devices={devices}
-              statusFilter={statusFilter}
-              factoryFilter={factoryFilter}
-              onChangeStatusFilter={setStatusFilter}
-              onChangeFactoryFilter={setFactoryFilter}
-              onOpenReplaceModal={(dev: Device) => {
-                setSelectedReplaceDevice(dev);
-                setScannedForReplace('');
-                setIsReplaceModalOpen(true);
-              }}
-              onOpenEditModal={handleOpenEditModal}
-              onOpenStatusModal={(dev: Device) => {
-                setSelectedStatusDevice(dev);
-                setIsStatusModalOpen(true);
-              }}
-              onOpenHistoryModal={(mcid: string) => handleQuickHistory(mcid)}
-              onOpenInstallModal={() => {
-                setScannedForInstall(null);
-                setIsInstallModalOpen(true);
-              }}
-            />
-          </div>
-
-          {/* Quick Info & Audit Activity (Col 4) */}
-          <div className="space-y-4">
-            {/* Audit History Widget Card */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
-              <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-800">
-                <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs sm:text-sm">
-                  <History className="w-4 h-4 text-cyan-400" />
-                  <span>Aktivitas Terbaru</span>
-                </div>
-                <button
-                  onClick={() => {
-                    setHistoryFilterMcid('');
-                    setIsHistoryModalOpen(true);
-                  }}
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 transition-colors"
-                >
-                  <span>Semua</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-
-              {history.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-500">
-                  Belum ada log aktivitas tercatat.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {history.slice(0, 5).map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => handleQuickHistory(item.mcid)}
-                      className="group p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/40 transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between text-[11px] mb-1">
-                        <span className="font-mono font-semibold text-cyan-400 group-hover:text-cyan-300 transition-colors">
-                          {item.mcid}
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {formatDate(item.timestamp)}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-300 line-clamp-1">
-                        <span className="text-slate-400">{item.eventType}:</span> {item.notes || `Update status ke ${item.newStatus}`}
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                        <span className="truncate max-w-[140px]">{item.macAddress}</span>
-                        <span className="text-slate-400">{item.performedBy?.split('@')[0]}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <button
+              onClick={() => setActiveView('planning')}
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                activeView === 'planning'
+                  ? 'bg-slate-800 text-amber-400 shadow-sm border border-amber-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Planning Pemasangan ({plans.length})</span>
+              {pendingPlanCount > 0 && (
+                <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {pendingPlanCount} Pending
+                </span>
               )}
-            </div>
+            </button>
+          </div>
 
-            {/* Quick Tips / Operational Rules Card */}
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
-              <div className="font-semibold text-slate-300 flex items-center gap-1.5">
-                <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Aturan Integritas Registrasi</span>
-              </div>
-              <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed text-slate-400">
-                <li>
-                  <strong className="text-slate-300">1 MCID = 1 MAC:</strong> Mengganti MAC otomatis mencatat riwayat pemindahan.
-                </li>
-                <li>
-                  <strong className="text-slate-300">Area Factory:</strong> Seluruh unit dipetakan ke Factory A1 hingga D2 beserta nomor Line.
-                </li>
-                <li>
-                  <strong className="text-slate-300">Sinkronisasi Real-Time:</strong> Setiap perubahan terjamin konsisten dan langsung aktif.
-                </li>
-              </ul>
-            </div>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 pr-2">
+            {activeView === 'planning' ? (
+              <span className="text-[11px] text-slate-400">
+                Pilih mesin di list lalu klik <strong className="text-cyan-400">&quot;Pasang IoT (Input MAC)&quot;</strong>
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-400">
+                Data perangkat terdaftar di Cloudflare D1 / SQLite
+              </span>
+            )}
           </div>
         </div>
+
+        {/* View Content: Planning or Registry */}
+        {activeView === 'planning' ? (
+          <PlanningList
+            plans={plans}
+            onOpenCreateModal={() => setIsCreatePlanOpen(true)}
+            onOpenImportModal={() => setIsImportPlanOpen(true)}
+            onOpenMapModal={(plan) => {
+              setSelectedMapPlan(plan);
+              setScannedForMapMac('');
+              setIsMapModalOpen(true);
+            }}
+            onOpenEditModal={(plan) => {
+              setSelectedEditPlan(plan);
+              setIsEditPlanOpen(true);
+            }}
+            onNavigateToDevice={() => {
+              setActiveView('registry');
+              setStatusFilter('ALL');
+            }}
+          />
+        ) : (
+          <>
+            {/* Dashboard Header & KPI Metrics */}
+            <section className="space-y-3 sm:space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+                <div>
+                  <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                    <span>Dashboard Pemetaan IoT Mesin Pabrik</span>
+                  </h2>
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                    Monitor status instalasi modul IoT pada setiap mesin produksi secara real-time
+                  </p>
+                </div>
+
+                {/* Quick Action Buttons (visible on sm+) */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setScannerTarget('mcid');
+                      setIsScannerOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-cyan-500/30 shadow-sm transition-colors active:scale-95"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>Scan Barcode</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/60 hover:border-cyan-500/70 shadow-sm transition-all active:scale-95"
+                    title="Import banyak perangkat sekaligus dari file CSV"
+                  >
+                    <UploadCloud className="w-4 h-4 text-cyan-400" />
+                    <span>Import CSV</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setScannedForInstall(null);
+                      setIsInstallModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-900/25 transition-all active:scale-95"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>Instal Device Baru</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Metric Summary Cards */}
+              <DashboardSummary
+                devices={devices}
+                history={history}
+                activeFilter={statusFilter}
+                onSelectFilter={setStatusFilter}
+                onOpenHistory={() => {
+                  setHistoryFilterMcid('');
+                  setIsHistoryModalOpen(true);
+                }}
+              />
+            </section>
+
+            {/* Main Grid: Device List & Recent Activity Sidebar */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 items-start">
+              {/* Main Registry Table (Col 1-3) */}
+              <div className="lg:col-span-3 space-y-4">
+                <DeviceList
+                  devices={devices}
+                  statusFilter={statusFilter}
+                  factoryFilter={factoryFilter}
+                  onChangeStatusFilter={setStatusFilter}
+                  onChangeFactoryFilter={setFactoryFilter}
+                  onOpenReplaceModal={(dev: Device) => {
+                    setSelectedReplaceDevice(dev);
+                    setScannedForReplace('');
+                    setIsReplaceModalOpen(true);
+                  }}
+                  onOpenEditModal={handleOpenEditModal}
+                  onOpenStatusModal={(dev: Device) => {
+                    setSelectedStatusDevice(dev);
+                    setIsStatusModalOpen(true);
+                  }}
+                  onOpenHistoryModal={(mcid: string) => handleQuickHistory(mcid)}
+                  onOpenInstallModal={() => {
+                    setScannedForInstall(null);
+                    setIsInstallModalOpen(true);
+                  }}
+                />
+              </div>
+
+              {/* Quick Info & Audit Activity (Col 4) */}
+              <div className="space-y-4">
+                {/* Audit History Widget Card */}
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
+                  <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-800">
+                    <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs sm:text-sm">
+                      <History className="w-4 h-4 text-cyan-400" />
+                      <span>Aktivitas Terbaru</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setHistoryFilterMcid('');
+                        setIsHistoryModalOpen(true);
+                      }}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 transition-colors"
+                    >
+                      <span>Semua</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  {history.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-slate-500">
+                      Belum ada log aktivitas tercatat.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {history.slice(0, 5).map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => handleQuickHistory(item.mcid)}
+                          className="group p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/40 transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between text-[11px] mb-1">
+                            <span className="font-mono font-semibold text-cyan-400 group-hover:text-cyan-300 transition-colors">
+                              {item.mcid}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              {formatDate(item.timestamp)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-300 line-clamp-1">
+                            <span className="text-slate-400">{item.eventType}:</span> {item.notes || `Update status ke ${item.newStatus}`}
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                            <span className="truncate max-w-[140px]">{item.macAddress}</span>
+                            <span className="text-slate-400">{item.performedBy?.split('@')[0]}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Tips / Operational Rules Card */}
+                <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+                  <div className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Aturan Integritas Registrasi</span>
+                  </div>
+                  <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed text-slate-400">
+                    <li>
+                      <strong className="text-slate-300">1 MCID = 1 MAC:</strong> Mengganti MAC otomatis mencatat riwayat pemindahan.
+                    </li>
+                    <li>
+                      <strong className="text-slate-300">Planning & Mapping:</strong> Request mesin baru dapat diimport via Excel dan dipetakan ke modul saat fisik terpasang.
+                    </li>
+                    <li>
+                      <strong className="text-slate-300">Sinkronisasi Real-Time:</strong> Setiap perubahan terjamin konsisten dan langsung aktif.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
       {/* Floating Bottom Quick Action Dock for Mobile Devices */}
       <div className="sm:hidden fixed bottom-3 inset-x-3 z-30 flex items-center justify-around p-2 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl backdrop-blur-xl">
         <button
           onClick={() => {
-            setScannerTarget('mcid');
+            setScannerTarget('mac');
             setIsScannerOpen(true);
           }}
           className="flex flex-col items-center gap-1 px-3 py-1.5 text-slate-300 hover:text-cyan-400 active:scale-95 transition-transform"
         >
           <Camera className="w-5 h-5 text-cyan-400" />
-          <span className="text-[10px] font-medium">Scan Kamera</span>
+          <span className="text-[10px] font-medium">Scan MAC</span>
         </button>
 
-        <button
-          onClick={() => {
-            setScannedForInstall(null);
-            setIsInstallModalOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold text-xs shadow-lg shadow-cyan-950/40 active:scale-95 transition-transform"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Instal Device</span>
-        </button>
+        {activeView === 'planning' ? (
+          <button
+            onClick={() => setIsCreatePlanOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold text-xs shadow-lg shadow-cyan-950/40 active:scale-95 transition-transform"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Tambah Plan</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setScannedForInstall(null);
+              setIsInstallModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold text-xs shadow-lg shadow-cyan-950/40 active:scale-95 transition-transform"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Instal Device</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setIsExportModalOpen(true)}
-          className="flex flex-col items-center gap-1 px-3 py-1.5 text-slate-300 hover:text-emerald-400 active:scale-95 transition-transform"
-        >
-          <Download className="w-5 h-5 text-emerald-400" />
-          <span className="text-[10px] font-medium">Export CSV</span>
-        </button>
+        {activeView === 'planning' ? (
+          <button
+            onClick={() => setIsImportPlanOpen(true)}
+            className="flex flex-col items-center gap-1 px-3 py-1.5 text-slate-300 hover:text-emerald-400 active:scale-95 transition-transform"
+          >
+            <UploadCloud className="w-5 h-5 text-emerald-400" />
+            <span className="text-[10px] font-medium">Import Excel</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            className="flex flex-col items-center gap-1 px-3 py-1.5 text-slate-300 hover:text-emerald-400 active:scale-95 transition-transform"
+          >
+            <Download className="w-5 h-5 text-emerald-400" />
+            <span className="text-[10px] font-medium">Export CSV</span>
+          </button>
+        )}
       </div>
 
       {/* ======================================================== */}
@@ -502,6 +630,42 @@ export default function Home() {
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+      />
+
+      {/* 10. Planning: Import Plan Modal (Excel / CSV) */}
+      <ImportPlanModal
+        isOpen={isImportPlanOpen}
+        onClose={() => setIsImportPlanOpen(false)}
+      />
+
+      {/* 11. Planning: Create Manual Plan Modal */}
+      <CreatePlanModal
+        isOpen={isCreatePlanOpen}
+        onClose={() => setIsCreatePlanOpen(false)}
+      />
+
+      {/* 12. Planning: Edit Plan Modal */}
+      <EditPlanModal
+        plan={selectedEditPlan}
+        isOpen={isEditPlanOpen}
+        onClose={() => {
+          setIsEditPlanOpen(false);
+          setSelectedEditPlan(null);
+        }}
+      />
+
+      {/* 13. Planning: Mapping & Pasang Modul IoT Modal (Input MAC Address) */}
+      <MapDeviceModal
+        plan={selectedMapPlan}
+        isOpen={isMapModalOpen}
+        onClose={() => {
+          setIsMapModalOpen(false);
+          setSelectedMapPlan(null);
+          setScannedForMapMac('');
+        }}
+        onOpenScanner={handleOpenScannerForMap}
+        scannedMac={scannedForMapMac}
+        existingDevices={devices}
       />
     </div>
   );

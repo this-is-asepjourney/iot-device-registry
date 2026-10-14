@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Device, InstallationHistory } from '@/types';
+import { Device, InstallationHistory, InstallationPlan } from '@/types';
 
 // ==========================================
 // CONFIGURATION & MODE DETECTION
@@ -111,6 +111,45 @@ const INITIAL_MOCK_HISTORY: InstallationHistory[] = [
   },
 ];
 
+const INITIAL_MOCK_PLANS: InstallationPlan[] = [
+  {
+    id: 'plan-init-01',
+    mcid: 'PRESS-80T-04',
+    machineModel: 'Komatsu 80 Ton Mechanical Press',
+    location: 'Factory A2 - Press Line 2',
+    status: 'Planned',
+    targetDate: '2026-10-25',
+    notes: 'Rencana pasang modul sensor getaran spindle & suhu motor.',
+    createdAt: '2026-10-10T08:00:00.000Z',
+    createdBy: 'admin@plant.local',
+  },
+  {
+    id: 'plan-init-02',
+    mcid: 'CNC-VM3-02',
+    machineModel: 'Haas CNC VM-3 Mold Making',
+    location: 'Factory B1 - Line Machining 3',
+    status: 'Planned',
+    targetDate: '2026-10-28',
+    notes: 'Gateway IoT pemantau arus motor & status running.',
+    createdAt: '2026-10-11T09:30:00.000Z',
+    createdBy: 'admin@plant.local',
+  },
+  {
+    id: 'plan-init-03',
+    mcid: 'CNC-VF2-01',
+    machineModel: 'Haas CNC Milling VF-2',
+    location: 'Plant 1 - Machining Workshop Line A',
+    status: 'Installed',
+    targetDate: '2026-09-15',
+    notes: 'Selesai dipasang gateway IoT sensor getaran dan temperatur spindle.',
+    installedMac: 'B8:27:EB:4A:88:11',
+    installedAt: '2026-09-15T08:30:00.000Z',
+    installedBy: 'asepjourney551@gmail.com',
+    createdAt: '2026-09-10T10:00:00.000Z',
+    createdBy: 'admin@plant.local',
+  },
+];
+
 function getLocalDatabase(): LocalSqliteDb | null {
   if (localDbInstance) return localDbInstance;
   if (sqliteUnavailable) return null;
@@ -186,6 +225,26 @@ function getLocalDatabase(): LocalSqliteDb | null {
       `);
     }
 
+    // Ensure installation_plans table exists
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS installation_plans (
+        id TEXT PRIMARY KEY,
+        mcid TEXT NOT NULL,
+        machine_model TEXT,
+        location TEXT,
+        status TEXT NOT NULL CHECK(status IN ('Planned', 'Installed', 'Cancelled')) DEFAULT 'Planned',
+        target_date TEXT,
+        notes TEXT,
+        installed_mac TEXT,
+        installed_at TEXT,
+        installed_by TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_plans_mcid ON installation_plans(mcid);
+      CREATE INDEX IF NOT EXISTS idx_plans_status ON installation_plans(status);
+    `);
+
     // Pre-seed sample devices if table is empty
     const countRow = db.prepare('SELECT COUNT(*) as count FROM devices').get() as { count: number };
     if (isNew || countRow.count === 0) {
@@ -232,6 +291,31 @@ function getLocalDatabase(): LocalSqliteDb | null {
           h.notes || '',
           h.timestamp,
           h.performedBy
+        );
+      });
+    }
+
+    // Pre-seed sample installation plans if table is empty
+    const countPlansRow = db.prepare('SELECT COUNT(*) as count FROM installation_plans').get() as { count: number };
+    if (isNew || countPlansRow.count === 0) {
+      const insertPlan = db.prepare(`
+        INSERT OR REPLACE INTO installation_plans (id, mcid, machine_model, location, status, target_date, notes, installed_mac, installed_at, installed_by, created_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      INITIAL_MOCK_PLANS.forEach((p) => {
+        insertPlan.run(
+          p.id,
+          p.mcid,
+          p.machineModel || '',
+          p.location || '',
+          p.status,
+          p.targetDate || '',
+          p.notes || '',
+          p.installedMac || '',
+          p.installedAt || '',
+          p.installedBy || '',
+          p.createdAt,
+          p.createdBy || ''
         );
       });
     }
@@ -314,6 +398,12 @@ export async function queryD1<T = unknown>(
     if (trimmed.startsWith('SELECT') && trimmed.includes('INSTALLATION_HISTORY')) {
       return {
         results: INITIAL_MOCK_HISTORY as unknown as T[],
+        success: true,
+      };
+    }
+    if (trimmed.startsWith('SELECT') && trimmed.includes('INSTALLATION_PLANS')) {
+      return {
+        results: INITIAL_MOCK_PLANS as unknown as T[],
         success: true,
       };
     }
@@ -402,6 +492,7 @@ export function resetLocalDatabase(): void {
   const db = getLocalDatabase();
   if (!db) return;
 
+  db.exec('DELETE FROM installation_plans;');
   db.exec('DELETE FROM installation_history;');
   db.exec('DELETE FROM mac_index;');
   db.exec('DELETE FROM devices;');
@@ -417,6 +508,10 @@ export function resetLocalDatabase(): void {
   const insertHist = db.prepare(`
     INSERT INTO installation_history (id, event_type, mcid, mac_address, new_status, machine_model, location, notes, timestamp, performed_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertPlan = db.prepare(`
+    INSERT INTO installation_plans (id, mcid, machine_model, location, status, target_date, notes, installed_mac, installed_at, installed_by, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   INITIAL_MOCK_DEVICES.forEach((d) => {
@@ -449,6 +544,23 @@ export function resetLocalDatabase(): void {
       h.notes || '',
       h.timestamp,
       h.performedBy
+    );
+  });
+
+  INITIAL_MOCK_PLANS.forEach((p) => {
+    insertPlan.run(
+      p.id,
+      p.mcid,
+      p.machineModel || '',
+      p.location || '',
+      p.status,
+      p.targetDate || '',
+      p.notes || '',
+      p.installedMac || '',
+      p.installedAt || '',
+      p.installedBy || '',
+      p.createdAt,
+      p.createdBy || ''
     );
   });
 }
