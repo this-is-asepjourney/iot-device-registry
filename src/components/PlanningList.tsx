@@ -15,11 +15,16 @@ import {
   Trash2,
   ArrowRight,
   TrendingUp,
+  SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 import { InstallationPlan, PlanStatus, FACTORY_LIST } from '@/types';
 import {
   extractFactory,
+  extractLine,
   getFactoryBadgeStyle,
+  isDateInPreset,
+  DateFilterPreset,
 } from '@/lib/utils';
 import {
   downloadPlanTemplateExcel,
@@ -47,6 +52,11 @@ export function PlanningList({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | PlanStatus>('ALL');
   const [factoryFilter, setFactoryFilter] = useState<'ALL' | string>('ALL');
+  const [modelFilter, setModelFilter] = useState<string>('ALL');
+  const [lineFilter, setLineFilter] = useState<string>('ALL');
+  const [timeFilter, setTimeFilter] = useState<DateFilterPreset>('ALL');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
 
   // Metrics
@@ -54,6 +64,32 @@ export function PlanningList({
   const plannedCount = plans.filter((p) => p.status === 'Planned').length;
   const installedCount = plans.filter((p) => p.status === 'Installed').length;
   const completionRate = totalCount > 0 ? Math.round((installedCount / totalCount) * 100) : 0;
+
+  // Extract unique machine models from plans
+  const availableModels = useMemo(() => {
+    const set = new Set<string>();
+    plans.forEach((p) => {
+      if (p.machineModel && p.machineModel.trim()) {
+        set.add(p.machineModel.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [plans]);
+
+  // Extract unique production lines from plans (scoped to factory if selected)
+  const availableLines = useMemo(() => {
+    const set = new Set<string>();
+    plans.forEach((p) => {
+      const fact = extractFactory(p.location);
+      if (factoryFilter === 'ALL' || fact === factoryFilter) {
+        const line = extractLine(p.location);
+        if (line && line.trim()) {
+          set.add(line.trim());
+        }
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [plans, factoryFilter]);
 
   // Filtered plans
   const filteredPlans = useMemo(() => {
@@ -67,6 +103,29 @@ export function PlanningList({
       if (factoryFilter !== 'ALL') {
         const fact = extractFactory(p.location);
         if (fact !== factoryFilter) {
+          return false;
+        }
+      }
+
+      // Model filter
+      if (modelFilter !== 'ALL') {
+        if (!p.machineModel || p.machineModel.toLowerCase() !== modelFilter.toLowerCase()) {
+          return false;
+        }
+      }
+
+      // Line filter
+      if (lineFilter !== 'ALL') {
+        const planLine = extractLine(p.location);
+        if (!planLine || planLine.toLowerCase() !== lineFilter.toLowerCase()) {
+          return false;
+        }
+      }
+
+      // Time filter (evaluates createdAt, targetDate, or installedAt)
+      if (timeFilter !== 'ALL') {
+        const timeToCheck = p.installedAt || p.targetDate || p.createdAt;
+        if (!isDateInPreset(timeToCheck, timeFilter, customStartDate, customEndDate)) {
           return false;
         }
       }
@@ -86,7 +145,36 @@ export function PlanningList({
 
       return true;
     });
-  }, [plans, statusFilter, factoryFilter, searchQuery]);
+  }, [
+    plans,
+    statusFilter,
+    factoryFilter,
+    modelFilter,
+    lineFilter,
+    timeFilter,
+    customStartDate,
+    customEndDate,
+    searchQuery,
+  ]);
+
+  const activeFiltersCount =
+    (statusFilter !== 'ALL' ? 1 : 0) +
+    (factoryFilter !== 'ALL' ? 1 : 0) +
+    (modelFilter !== 'ALL' ? 1 : 0) +
+    (lineFilter !== 'ALL' ? 1 : 0) +
+    (timeFilter !== 'ALL' ? 1 : 0) +
+    (searchQuery.trim() ? 1 : 0);
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('ALL');
+    setFactoryFilter('ALL');
+    setModelFilter('ALL');
+    setLineFilter('ALL');
+    setTimeFilter('ALL');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
 
   const handleDelete = async (id: string, mcid: string) => {
     if (!confirm(`Hapus rencana pemasangan untuk mesin [${mcid}]?`)) return;
@@ -316,7 +404,7 @@ export function PlanningList({
             <select
               value={factoryFilter}
               onChange={(e) => setFactoryFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-cyan-500 shrink-0"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-cyan-500 shrink-0 cursor-pointer"
             >
               <option value="ALL">Semua Factory</option>
               {FACTORY_LIST.map((f) => (
@@ -325,6 +413,115 @@ export function PlanningList({
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* Advanced Filters: Model Mesin, Line, Waktu & Reset Button */}
+        <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="font-semibold text-slate-300 text-[11px]">Filter:</span>
+          </div>
+
+          {/* Model Mesin Filter */}
+          <div className="min-w-[140px] sm:min-w-[160px]">
+            <select
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              className="w-full px-2.5 py-1 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+              title="Filter Model Mesin"
+            >
+              <option value="ALL">Semua Model Mesin</option>
+              {availableModels.map((m) => {
+                const count = plans.filter((p) => p.machineModel === m).length;
+                return (
+                  <option key={m} value={m}>
+                    {m} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Line Filter */}
+          <div className="min-w-[120px] sm:min-w-[140px]">
+            <select
+              value={lineFilter}
+              onChange={(e) => setLineFilter(e.target.value)}
+              className="w-full px-2.5 py-1 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+              title="Filter Line"
+            >
+              <option value="ALL">
+                Semua Line {factoryFilter !== 'ALL' ? `(${factoryFilter})` : ''}
+              </option>
+              {availableLines.map((l) => {
+                const count = plans.filter(
+                  (p) =>
+                    (factoryFilter === 'ALL' || extractFactory(p.location) === factoryFilter) &&
+                    extractLine(p.location) === l
+                ).length;
+                return (
+                  <option key={l} value={l}>
+                    {l} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Time Filter */}
+          <div className="min-w-[130px] sm:min-w-[150px]">
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value as DateFilterPreset)}
+              className="w-full px-2.5 py-1 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+              title="Filter Waktu Rencana"
+            >
+              <option value="ALL">Semua Waktu</option>
+              <option value="TODAY">Hari Ini</option>
+              <option value="LAST_7_DAYS">7 Hari Terakhir</option>
+              <option value="LAST_30_DAYS">30 Hari Terakhir</option>
+              <option value="THIS_MONTH">Bulan Ini</option>
+              <option value="CUSTOM">Custom Tanggal...</option>
+            </select>
+          </div>
+
+          {/* Custom Date Pickers */}
+          {timeFilter === 'CUSTOM' && (
+            <div className="flex items-center gap-1.5 text-xs bg-slate-950 px-2 py-0.5 rounded-xl border border-slate-800 animate-in fade-in">
+              <span className="text-[10px] text-slate-400">Dari:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+              />
+              <span className="text-[10px] text-slate-400">Sampai:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          )}
+
+          {/* Result count & Reset */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <span className="text-[11px] text-slate-400 hidden md:inline">
+              Menampilkan <strong className="text-cyan-400">{filteredPlans.length}</strong> dari{' '}
+              {plans.length}
+            </span>
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-colors active:scale-95 shadow-sm"
+                title="Reset seluruh filter"
+              >
+                <RotateCcw className="w-3 h-3 text-rose-400" />
+                <span>Reset ({activeFiltersCount})</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -339,13 +536,24 @@ export function PlanningList({
             <h4 className="text-sm font-semibold text-slate-300">
               {plans.length === 0
                 ? 'Belum ada rencana pemasangan IoT'
-                : 'Tidak ada rencana yang cocok dengan filter'}
+                : 'Tidak ada rencana yang cocok dengan filter aktif'}
             </h4>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
               {plans.length === 0
                 ? 'Mulai dengan mendownload format template Excel, isi kolom MCID mesin pabrik, dan import kembali file tersebut ke sistem.'
-                : 'Coba ubah kata kunci pencarian atau reset filter status dan factory.'}
+                : 'Coba ubah kata kunci pencarian atau reset filter untuk menampilkan kembali semua data.'}
             </p>
+            {activeFiltersCount > 0 && (
+              <div className="pt-2">
+                <button
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition-colors shadow-md"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Semua Filter</span>
+                </button>
+              </div>
+            )}
             {plans.length === 0 && (
               <div className="pt-2 flex items-center justify-center gap-2">
                 <button

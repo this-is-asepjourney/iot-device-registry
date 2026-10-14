@@ -12,7 +12,7 @@ import {
   SwitchCamera,
   Keyboard,
 } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { playBeepSound, normalizeMacAddress, formatMacAddress, normalizeMcid } from '@/lib/utils';
 
 interface BarcodeScannerModalProps {
@@ -141,7 +141,18 @@ export function BarcodeScannerModal({
       element.innerHTML = '';
 
       try {
-        const html5QrCode = new Html5Qrcode(scannerContainerId);
+        // Supported formats: QR Code + Standard 1D Industrial Barcodes
+        const html5QrCode = new Html5Qrcode(scannerContainerId, {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+          ],
+          verbose: false,
+        });
         scannerRef.current = html5QrCode;
 
         const qrSuccessCallback = (decodedText: string) => {
@@ -152,19 +163,21 @@ export function BarcodeScannerModal({
           // No-op per frame scan miss
         };
 
+        // Note: Do NOT set aspectRatio here!
+        // Setting aspectRatio causes track.applyConstraints({ aspectRatio }) which throws
+        // OverconstrainedError on mobile rear cameras. Let camera stream naturally.
         const config = {
           fps: 15,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const edgeSize = Math.max(160, Math.floor(minEdge * 0.72));
+            const edgeSize = Math.max(160, Math.floor(minEdge * 0.75));
             return { width: edgeSize, height: edgeSize };
           },
-          aspectRatio: 1.0,
         };
 
         let started = false;
 
-        // Attempt 1: Try specific cameraId if provided
+        // Attempt 1: Try specific cameraId if explicitly selected by user
         if (camId) {
           try {
             await html5QrCode.start(
@@ -179,7 +192,7 @@ export function BarcodeScannerModal({
           }
         }
 
-        // Attempt 2: Try facingMode
+        // Attempt 2: Try facingMode (natively selects rear/environment camera on phones)
         if (!started) {
           try {
             await html5QrCode.start(
@@ -195,19 +208,18 @@ export function BarcodeScannerModal({
         }
 
         // Attempt 3: Try opposite facingMode (e.g. laptop webcam if environment failed)
-        if (!started) {
-          const alternateMode = mode === 'environment' ? 'user' : 'environment';
+        if (!started && mode === 'environment') {
           try {
             await html5QrCode.start(
-              { facingMode: alternateMode },
+              { facingMode: 'user' },
               config,
               qrSuccessCallback,
               qrErrorCallback
             );
             started = true;
-            setFacingMode(alternateMode);
+            setFacingMode('user');
           } catch (altErr) {
-            console.warn(`Starting alternate mode ${alternateMode} failed:`, altErr);
+            console.warn('Starting user facingMode fallback failed:', altErr);
           }
         }
 
@@ -227,19 +239,30 @@ export function BarcodeScannerModal({
         }
 
         if (!started) {
-          throw new Error('Semua opsi kamera gagal dimulai.');
+          throw new Error('Semua opsi kamera gagal dibuka. Pastikan izin kamera aktif.');
         }
 
-        // Query available cameras to update selector if not yet fetched
+        // Now that permission is granted and stream is open, populate real camera labels
         try {
           const availableCams = await Html5Qrcode.getCameras();
           if (isMountedRef.current && availableCams.length > 0) {
-            setCameras(
-              availableCams.map((c) => ({
-                id: c.id,
-                label: c.label || `Kamera ${c.id.slice(0, 4)}`,
-              }))
-            );
+            const formatted = availableCams.map((c) => ({
+              id: c.id,
+              label: c.label || `Kamera ${c.id.slice(0, 4)}`,
+            }));
+            setCameras(formatted);
+
+            // Update selectedCameraId if not yet set
+            if (!camId) {
+              const activeRear = formatted.find((c) =>
+                /back|rear|environment|belakang|traseira/i.test(c.label)
+              );
+              if (activeRear) {
+                setSelectedCameraId(activeRear.id);
+              } else {
+                setSelectedCameraId(formatted[0].id);
+              }
+            }
           }
         } catch {
           // Ignore enumeration errors
@@ -300,37 +323,8 @@ export function BarcodeScannerModal({
       setIsManualInput(false);
       setManualText('');
 
-      // Enumerate cameras first to pre-select back camera if on mobile
+      // Start camera directly with facingMode (natively selects rear camera on mobile)
       const initScanner = async () => {
-        try {
-          const camList = await Html5Qrcode.getCameras().catch(() => []);
-          if (isMountedRef.current && camList.length > 0) {
-            const formatted = camList.map((c) => ({
-              id: c.id,
-              label: c.label || `Kamera ${c.id.slice(0, 4)}`,
-            }));
-            setCameras(formatted);
-
-            // Find rear camera if environment mode
-            let preferredCamId = formatted[0].id;
-            const rearCam = formatted.find((c) =>
-              /back|rear|environment|belakang|traseira/i.test(c.label)
-            );
-            if (rearCam) {
-              preferredCamId = rearCam.id;
-            } else if (formatted.length > 1) {
-              // On mobile, back camera is usually the last one in the list
-              preferredCamId = formatted[formatted.length - 1].id;
-            }
-
-            setSelectedCameraId(preferredCamId);
-            await startCameraInstance(preferredCamId, facingMode);
-            return;
-          }
-        } catch {
-          // If enumeration fails, fall back to default start
-        }
-
         await startCameraInstance(selectedCameraId, facingMode);
       };
 

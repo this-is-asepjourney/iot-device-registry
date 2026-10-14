@@ -250,5 +250,73 @@ export function formatLocation(factory: string, line?: string): string {
   return `Factory ${f} - ${l}`;
 }
 
+export type DateFilterPreset =
+  | 'ALL'
+  | 'TODAY'
+  | 'LAST_7_DAYS'
+  | 'LAST_30_DAYS'
+  | 'THIS_MONTH'
+  | 'CUSTOM';
+
+export const DATE_FILTER_LABELS: Record<DateFilterPreset, string> = {
+  ALL: 'Semua Waktu',
+  TODAY: 'Hari Ini',
+  LAST_7_DAYS: '7 Hari Terakhir',
+  LAST_30_DAYS: '30 Hari Terakhir',
+  THIS_MONTH: 'Bulan Ini',
+  CUSTOM: 'Custom Tanggal',
+};
+
+/**
+ * Checks whether an ISO date string matches a date filter preset or custom date range.
+ */
+export function isDateInPreset(
+  dateStr: string | undefined | null,
+  preset: DateFilterPreset,
+  customStart?: string,
+  customEnd?: string
+): boolean {
+  if (preset === 'ALL') return true;
+  if (!dateStr) return false;
+
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return false;
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  switch (preset) {
+    case 'TODAY':
+      return date >= startOfToday && date <= endOfToday;
+    case 'LAST_7_DAYS': {
+      const past7 = new Date(startOfToday.getTime() - 6 * 24 * 60 * 60 * 1000);
+      return date >= past7 && date <= endOfToday;
+    }
+    case 'LAST_30_DAYS': {
+      const past30 = new Date(startOfToday.getTime() - 29 * 24 * 60 * 60 * 1000);
+      return date >= past30 && date <= endOfToday;
+    }
+    case 'THIS_MONTH': {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return date >= startOfMonth && date <= endOfMonth;
+    }
+    case 'CUSTOM': {
+      if (customStart) {
+        const start = new Date(customStart + 'T00:00:00');
+        if (!isNaN(start.getTime()) && date < start) return false;
+      }
+      if (customEnd) {
+        const end = new Date(customEnd + 'T23:59:59.999');
+        if (!isNaN(end.getTime()) && date > end) return false;
+      }
+      return true;
+    }
+    default:
+      return true;
+  }
+}
+
 
 

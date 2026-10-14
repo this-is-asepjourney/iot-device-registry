@@ -1,9 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, History, Search, ArrowRight, UserCheck, Calendar, Filter } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import {
+  X,
+  History,
+  Search,
+  ArrowRight,
+  UserCheck,
+  Calendar,
+  Filter,
+  SlidersHorizontal,
+  RotateCcw,
+} from 'lucide-react';
 import { InstallationHistory } from '@/types';
-import { formatDate } from '@/lib/utils';
+import { formatDate, isDateInPreset, DateFilterPreset } from '@/lib/utils';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -20,12 +30,27 @@ export function HistoryModal({
 }: HistoryModalProps) {
   const [searchTerm, setSearchTerm] = useState(initialMcidFilter);
   const [selectedEvent, setSelectedEvent] = useState<string>('ALL');
+  const [modelFilter, setModelFilter] = useState<string>('ALL');
+  const [timeFilter, setTimeFilter] = useState<DateFilterPreset>('ALL');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
 
   React.useEffect(() => {
     if (initialMcidFilter) {
       setSearchTerm(initialMcidFilter);
     }
   }, [initialMcidFilter]);
+
+  // Extract unique machine models from history
+  const availableModels = useMemo(() => {
+    const set = new Set<string>();
+    history.forEach((h) => {
+      if (h.machineModel && h.machineModel.trim()) {
+        set.add(h.machineModel.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [history]);
 
   if (!isOpen) return null;
 
@@ -34,14 +59,43 @@ export function HistoryModal({
       !searchTerm ||
       item.mcid.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.previousMacAddress && item.previousMacAddress.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.machineModel && item.machineModel.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.previousMacAddress &&
+        item.previousMacAddress.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.machineModel &&
+        item.machineModel.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.notes && item.notes.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesEvent = selectedEvent === 'ALL' || item.eventType === selectedEvent;
 
-    return matchesSearch && matchesEvent;
+    const matchesModel =
+      modelFilter === 'ALL' ||
+      (item.machineModel &&
+        item.machineModel.toLowerCase() === modelFilter.toLowerCase());
+
+    const matchesTime = isDateInPreset(
+      item.timestamp,
+      timeFilter,
+      customStartDate,
+      customEndDate
+    );
+
+    return matchesSearch && matchesEvent && matchesModel && matchesTime;
   });
+
+  const activeFiltersCount =
+    (selectedEvent !== 'ALL' ? 1 : 0) +
+    (modelFilter !== 'ALL' ? 1 : 0) +
+    (timeFilter !== 'ALL' ? 1 : 0) +
+    (searchTerm.trim() ? 1 : 0);
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setSelectedEvent('ALL');
+    setModelFilter('ALL');
+    setTimeFilter('ALL');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
 
   const getEventBadge = (type: string) => {
     switch (type) {
@@ -92,7 +146,7 @@ export function HistoryModal({
                 Riwayat Audit & Siklus Hidup
               </h3>
               <p className="text-[11px] sm:text-xs text-slate-400 truncate">
-                Log kronologis pemasangan, pergantian, dan status
+                Log kronologis pemasangan, pergantian, dan status mesin
               </p>
             </div>
           </div>
@@ -104,32 +158,113 @@ export function HistoryModal({
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-950/50 flex flex-col sm:flex-row gap-2.5 sm:gap-3 shrink-0">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Cari MCID, MAC, Model Mesin..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-            />
+        {/* Filters Toolbar */}
+        <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-950/50 flex flex-col gap-2.5 shrink-0">
+          {/* Row 1: Search & Event */}
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Cari MCID, MAC, Model Mesin..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={selectedEvent}
+                onChange={(e) => setSelectedEvent(e.target.value)}
+                className="w-full sm:w-auto px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="ALL">Semua Peristiwa</option>
+                <option value="INSTALL">Instalasi Baru</option>
+                <option value="REPLACE_DEVICE">Ganti Device</option>
+                <option value="STATUS_CHANGE">Ubah Status</option>
+                <option value="REMOVE">Pelepasan</option>
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-            <select
-              value={selectedEvent}
-              onChange={(e) => setSelectedEvent(e.target.value)}
-              className="w-full sm:w-auto px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-cyan-500"
-            >
-              <option value="ALL">Semua Peristiwa</option>
-              <option value="INSTALL">Instalasi Baru</option>
-              <option value="REPLACE_DEVICE">Ganti Device</option>
-              <option value="STATUS_CHANGE">Ubah Status</option>
-              <option value="REMOVE">Pelepasan</option>
-            </select>
+          {/* Row 2: Model Mesin & Waktu Filters */}
+          <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-slate-800/60">
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="font-semibold text-slate-300 text-[11px]">Filter:</span>
+            </div>
+
+            {/* Model Mesin */}
+            <div className="min-w-[130px] sm:min-w-[150px]">
+              <select
+                value={modelFilter}
+                onChange={(e) => setModelFilter(e.target.value)}
+                className="w-full px-2.5 py-1 text-xs rounded-xl bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="ALL">Semua Model Mesin</option>
+                {availableModels.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Waktu Filter */}
+            <div className="min-w-[130px] sm:min-w-[150px]">
+              <select
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value as DateFilterPreset)}
+                className="w-full px-2.5 py-1 text-xs rounded-xl bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="ALL">Semua Waktu</option>
+                <option value="TODAY">Hari Ini</option>
+                <option value="LAST_7_DAYS">7 Hari Terakhir</option>
+                <option value="LAST_30_DAYS">30 Hari Terakhir</option>
+                <option value="THIS_MONTH">Bulan Ini</option>
+                <option value="CUSTOM">Custom Tanggal...</option>
+              </select>
+            </div>
+
+            {/* Custom Date Pickers */}
+            {timeFilter === 'CUSTOM' && (
+              <div className="flex items-center gap-1.5 text-xs bg-slate-900 px-2 py-0.5 rounded-xl border border-slate-800 animate-in fade-in">
+                <span className="text-[10px] text-slate-400">Dari:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-1.5 py-0.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+                />
+                <span className="text-[10px] text-slate-400">Sampai:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-1.5 py-0.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            )}
+
+            {/* Counter & Reset */}
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                Menampilkan <strong className="text-indigo-400">{filteredHistory.length}</strong> dari{' '}
+                {history.length}
+              </span>
+              {activeFiltersCount > 0 && (
+                <button
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-colors active:scale-95 shadow-sm"
+                  title="Reset filter riwayat"
+                >
+                  <RotateCcw className="w-3 h-3 text-rose-400" />
+                  <span>Reset ({activeFiltersCount})</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

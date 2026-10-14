@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Search,
   Filter,
@@ -15,9 +15,19 @@ import {
   Layers,
   Edit3,
   Building2,
+  Calendar,
+  RotateCcw,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Device, DeviceStatus, FACTORY_LIST } from '@/types';
-import { formatDate, extractFactory, getFactoryBadgeStyle } from '@/lib/utils';
+import {
+  formatDate,
+  extractFactory,
+  extractLine,
+  getFactoryBadgeStyle,
+  isDateInPreset,
+  DateFilterPreset,
+} from '@/lib/utils';
 
 interface DeviceListProps {
   devices: Device[];
@@ -47,27 +57,115 @@ export function DeviceList({
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
+  // Advanced Filters: Model Mesin, Line, Waktu
+  const [modelFilter, setModelFilter] = useState<string>('ALL');
+  const [lineFilter, setLineFilter] = useState<string>('ALL');
+  const [timeFilter, setTimeFilter] = useState<DateFilterPreset>('ALL');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedText(text);
     setTimeout(() => setCopiedText(null), 1500);
   };
 
-  const filteredDevices = devices.filter((d) => {
-    const matchesSearch =
-      !searchTerm ||
-      d.mcid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.machineModel.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.location.toLowerCase().includes(searchTerm.toLowerCase());
+  // Extract unique machine models from devices
+  const availableModels = useMemo(() => {
+    const set = new Set<string>();
+    devices.forEach((d) => {
+      if (d.machineModel && d.machineModel.trim()) {
+        set.add(d.machineModel.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [devices]);
 
-    const matchesStatus = statusFilter === 'ALL' || d.status === statusFilter;
+  // Extract unique production lines from devices (scoped to selected factory if any)
+  const availableLines = useMemo(() => {
+    const set = new Set<string>();
+    devices.forEach((d) => {
+      const fact = extractFactory(d.location);
+      if (factoryFilter === 'ALL' || fact === factoryFilter) {
+        const line = extractLine(d.location);
+        if (line && line.trim()) {
+          set.add(line.trim());
+        }
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [devices, factoryFilter]);
 
-    const deviceFactory = extractFactory(d.location);
-    const matchesFactory = factoryFilter === 'ALL' || deviceFactory === factoryFilter;
+  // Filter evaluation across all criteria
+  const filteredDevices = useMemo(() => {
+    return devices.filter((d) => {
+      const matchesSearch =
+        !searchTerm ||
+        d.mcid.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        d.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        d.machineModel.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        d.location.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchesSearch && matchesStatus && matchesFactory;
-  });
+      const matchesStatus = statusFilter === 'ALL' || d.status === statusFilter;
+
+      const deviceFactory = extractFactory(d.location);
+      const matchesFactory = factoryFilter === 'ALL' || deviceFactory === factoryFilter;
+
+      const deviceLine = extractLine(d.location);
+      const matchesLine =
+        lineFilter === 'ALL' ||
+        (deviceLine && deviceLine.toLowerCase() === lineFilter.toLowerCase());
+
+      const matchesModel =
+        modelFilter === 'ALL' ||
+        (d.machineModel && d.machineModel.toLowerCase() === modelFilter.toLowerCase());
+
+      const matchesTime = isDateInPreset(
+        d.installedAt,
+        timeFilter,
+        customStartDate,
+        customEndDate
+      );
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesFactory &&
+        matchesLine &&
+        matchesModel &&
+        matchesTime
+      );
+    });
+  }, [
+    devices,
+    searchTerm,
+    statusFilter,
+    factoryFilter,
+    lineFilter,
+    modelFilter,
+    timeFilter,
+    customStartDate,
+    customEndDate,
+  ]);
+
+  const activeFiltersCount =
+    (statusFilter !== 'ALL' ? 1 : 0) +
+    (factoryFilter !== 'ALL' ? 1 : 0) +
+    (modelFilter !== 'ALL' ? 1 : 0) +
+    (lineFilter !== 'ALL' ? 1 : 0) +
+    (timeFilter !== 'ALL' ? 1 : 0) +
+    (searchTerm.trim() ? 1 : 0);
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    onChangeStatusFilter('ALL');
+    onChangeFactoryFilter('ALL');
+    setModelFilter('ALL');
+    setLineFilter('ALL');
+    setTimeFilter('ALL');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
 
   const getStatusBadge = (status: DeviceStatus) => {
     switch (status) {
@@ -172,6 +270,116 @@ export function DeviceList({
             );
           })}
         </div>
+
+        {/* Row 3: Advanced Dropdown Filters (Model Mesin, Line, Waktu) & Reset Button */}
+        <div className="pt-2.5 border-t border-slate-800/60 flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="font-semibold text-slate-300 text-[11px]">Filter:</span>
+          </div>
+
+          {/* Model Mesin Filter Dropdown */}
+          <div className="flex items-center gap-1 min-w-[140px] sm:min-w-[160px]">
+            <select
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+              title="Filter Model Mesin"
+            >
+              <option value="ALL">Semua Model Mesin</option>
+              {availableModels.map((m) => {
+                const count = devices.filter((d) => d.machineModel === m).length;
+                return (
+                  <option key={m} value={m}>
+                    {m} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Line Produksi Filter Dropdown */}
+          <div className="flex items-center gap-1 min-w-[120px] sm:min-w-[140px]">
+            <select
+              value={lineFilter}
+              onChange={(e) => setLineFilter(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+              title="Filter Line Produksi"
+            >
+              <option value="ALL">
+                Semua Line {factoryFilter !== 'ALL' ? `(${factoryFilter})` : ''}
+              </option>
+              {availableLines.map((l) => {
+                const count = devices.filter(
+                  (d) =>
+                    (factoryFilter === 'ALL' || extractFactory(d.location) === factoryFilter) &&
+                    extractLine(d.location) === l
+                ).length;
+                return (
+                  <option key={l} value={l}>
+                    {l} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Filter Waktu (Time / Date Range) */}
+          <div className="flex items-center gap-1 min-w-[130px] sm:min-w-[150px]">
+            <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0 hidden sm:block" />
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value as DateFilterPreset)}
+              className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+              title="Filter Waktu Instalasi"
+            >
+              <option value="ALL">Semua Waktu</option>
+              <option value="TODAY">Hari Ini</option>
+              <option value="LAST_7_DAYS">7 Hari Terakhir</option>
+              <option value="LAST_30_DAYS">30 Hari Terakhir</option>
+              <option value="THIS_MONTH">Bulan Ini</option>
+              <option value="CUSTOM">Custom Tanggal...</option>
+            </select>
+          </div>
+
+          {/* Custom Date Range Pickers if CUSTOM selected */}
+          {timeFilter === 'CUSTOM' && (
+            <div className="flex items-center gap-1.5 text-xs bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 animate-in fade-in">
+              <span className="text-[11px] text-slate-400 font-medium">Dari:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-2 py-0.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+              />
+              <span className="text-[11px] text-slate-400 font-medium">Sampai:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-2 py-0.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          )}
+
+          {/* Counter & Reset Filter Button */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <span className="text-[11px] text-slate-400 hidden md:inline">
+              Menampilkan <strong className="text-cyan-400">{filteredDevices.length}</strong> dari{' '}
+              {devices.length}
+            </span>
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-colors active:scale-95 shadow-sm"
+                title="Reset seluruh filter"
+              >
+                <RotateCcw className="w-3 h-3 text-rose-400" />
+                <span>Reset ({activeFiltersCount})</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Content */}
@@ -182,21 +390,18 @@ export function DeviceList({
           </div>
           <h4 className="text-sm font-semibold text-slate-300">Tidak ada perangkat ditemukan</h4>
           <p className="text-xs text-slate-500 max-w-xs mt-1">
-            {searchTerm || statusFilter !== 'ALL' || factoryFilter !== 'ALL'
-              ? 'Coba ganti kata kunci pencarian atau sesuaikan filter status / factory.'
+            {activeFiltersCount > 0
+              ? 'Tidak ada perangkat yang cocok dengan kombinasi filter aktif Anda. Coba sesuaikan atau reset filter.'
               : 'Belum ada perangkat IoT yang terdaftar di sistem.'}
           </p>
           <div className="flex gap-2 mt-4">
-            {(searchTerm || statusFilter !== 'ALL' || factoryFilter !== 'ALL') && (
+            {activeFiltersCount > 0 && (
               <button
-                onClick={() => {
-                  setSearchTerm('');
-                  onChangeStatusFilter('ALL');
-                  onChangeFactoryFilter('ALL');
-                }}
-                className="px-3.5 py-2 text-xs font-medium rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition-colors shadow-md"
               >
-                Reset Filter
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Semua Filter</span>
               </button>
             )}
             <button
