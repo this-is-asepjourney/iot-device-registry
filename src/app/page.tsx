@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Cpu,
   Calendar,
+  Zap,
 } from 'lucide-react';
 import { Device, InstallationHistory, DeviceStatus, InstallationPlan } from '@/types';
 import {
@@ -39,6 +40,7 @@ import { ImportPlanModal } from '@/components/ImportPlanModal';
 import { CreatePlanModal } from '@/components/CreatePlanModal';
 import { EditPlanModal } from '@/components/EditPlanModal';
 import { MapDeviceModal } from '@/components/MapDeviceModal';
+import { DatabaseOptimizerModal } from '@/components/DatabaseOptimizerModal';
 import { formatDate } from '@/lib/utils';
 
 export default function Home() {
@@ -71,6 +73,7 @@ export default function Home() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isDbOptimizerOpen, setIsDbOptimizerOpen] = useState(false);
 
   // Planning modals state
   const [isImportPlanOpen, setIsImportPlanOpen] = useState(false);
@@ -92,20 +95,15 @@ export default function Home() {
     checkDatabaseStatus().then((st) => setDbSync(st));
   };
 
-  // Check database mode and subscribe to data
+  // 1. Subscribe to Devices and Plans (Adaptive SWR & Visibility-Aware)
   useEffect(() => {
     refreshSync();
 
-    // Periodic heartbeat to keep sync status live
+    // Periodic heartbeat to keep sync and eco metrics live (30s)
     const interval = setInterval(refreshSync, 30000);
 
     const unsubDevices = subscribeDevices((list) => {
       setDevices(list);
-      refreshSync();
-    });
-
-    const unsubHistory = subscribeHistory((hist) => {
-      setHistory(hist);
     });
 
     const unsubPlans = subscribePlans((planList) => {
@@ -115,10 +113,19 @@ export default function Home() {
     return () => {
       clearInterval(interval);
       unsubDevices();
-      unsubHistory();
       unsubPlans();
     };
   }, []);
+
+  // 2. Lazy-load history only when HistoryModal or ExportModal is active (saves thousands of D1 rows read)
+  useEffect(() => {
+    if (isHistoryModalOpen || isExportModalOpen) {
+      const unsubHistory = subscribeHistory((hist) => {
+        setHistory(hist);
+      });
+      return () => unsubHistory();
+    }
+  }, [isHistoryModalOpen, isExportModalOpen]);
 
   // Handlers for Scanner
   const handleOpenScannerForInstall = (field: 'mcid' | 'mac') => {
@@ -240,6 +247,20 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2 self-stretch sm:self-center justify-end shrink-0 pt-1 sm:pt-0">
+            {/* D1 Eco-Mode Optimizer Badge */}
+            {dbSync.metrics?.ecoMode && (
+              <button
+                id="btn-d1-eco"
+                onClick={() => setIsDbOptimizerOpen(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono flex items-center gap-1.5 transition-all shadow-inner active:scale-95 group cursor-pointer"
+                title="Buka panel D1 Database Optimizer & Eco-Engine"
+              >
+                <Zap className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                <span className="hidden xs:inline">D1 Eco</span>
+                <span className="font-bold text-emerald-400">{dbSync.metrics.hitRate}</span>
+              </button>
+            )}
+
             {dbSync.latencyMs !== undefined && (
               <div className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 flex items-center gap-1.5 shadow-inner">
                 <Activity className="w-3.5 h-3.5 text-emerald-400" />
@@ -666,6 +687,14 @@ export default function Home() {
         onClose={() => setIsScannerOpen(false)}
         targetField={scannerTarget}
         onScanSuccess={handleScanSuccess}
+      />
+
+      {/* 14. Database Optimizer & Cloudflare D1 Eco-Mode Modal */}
+      <DatabaseOptimizerModal
+        isOpen={isDbOptimizerOpen}
+        onClose={() => setIsDbOptimizerOpen(false)}
+        syncStatus={dbSync}
+        onStatusUpdated={(st) => setDbSync(st)}
       />
     </div>
   );

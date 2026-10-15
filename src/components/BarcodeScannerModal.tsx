@@ -50,6 +50,7 @@ export function BarcodeScannerModal({
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const activeTrackRef = useRef<MediaStreamTrack | null>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
   const isStartingRef = useRef(false);
   const isMountedRef = useRef(true);
   const onScanSuccessRef = useRef(onScanSuccess);
@@ -65,6 +66,12 @@ export function BarcodeScannerModal({
 
   // Safely stop and clear scanner instance and release hardware camera tracks
   const stopScanner = useCallback(async () => {
+    // 0. Disconnect DOM mutation observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
     // 1. Turn off torch and stop active video track if present
     if (activeTrackRef.current) {
       try {
@@ -145,6 +152,47 @@ export function BarcodeScannerModal({
     [targetField, stopScanner]
   );
 
+  // Helper to ensure iOS Safari WebKit renders video inline properly without black screen
+  const patchVideoElementForWebKit = useCallback((video: HTMLVideoElement) => {
+    // Critical attributes for iOS Safari inline playback:
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.setAttribute('autoplay', 'true');
+    video.setAttribute('muted', 'true');
+    video.playsInline = true;
+    video.muted = true;
+    video.autoplay = true;
+
+    // Force styles to override any inline style="width: 0px" during iOS layout animations
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.minWidth = '100%';
+    video.style.minHeight = '100%';
+    video.style.objectFit = 'cover';
+    video.style.display = 'block';
+    video.style.position = 'absolute';
+    video.style.top = '0';
+    video.style.left = '0';
+    (video.style as unknown as Record<string, string>).webkitTransform = 'translateZ(0)';
+    video.style.transform = 'translateZ(0)';
+
+    // Ensure playback starts on iOS WebKit
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        setTimeout(() => {
+          video.play().catch(() => {});
+        }, 150);
+      });
+    }
+
+    video.onloadedmetadata = () => {
+      if (video.paused) {
+        video.play().catch(() => {});
+      }
+    };
+  }, []);
+
   // Helper to start camera scanner with fallback chain
   const startCameraInstance = useCallback(
     async (camId: string | null, mode: 'environment' | 'user') => {
@@ -162,12 +210,37 @@ export function BarcodeScannerModal({
         return;
       }
 
-      const container = document.getElementById(scannerContainerId);
+      // Wait until container has real rendered dimensions (prevents iOS Safari 0x0 layout bug)
+      let container: HTMLElement | null = null;
+      for (let i = 0; i < 15; i++) {
+        container = document.getElementById(scannerContainerId);
+        if (container && container.clientWidth > 40 && container.clientHeight > 40) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
       if (!container) {
         isStartingRef.current = false;
         return;
       }
       container.innerHTML = '';
+
+      // Setup MutationObserver to immediately patch any injected <video> with iOS WebKit attributes
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of Array.from(m.addedNodes)) {
+            if (node.nodeName === 'VIDEO') {
+              patchVideoElementForWebKit(node as HTMLVideoElement);
+            } else if ((node as HTMLElement).querySelector) {
+              const v = (node as HTMLElement).querySelector('video');
+              if (v) patchVideoElementForWebKit(v);
+            }
+          }
+        }
+      });
+      observer.observe(container, { childList: true, subtree: true });
+      observerRef.current = observer;
 
       try {
         // Supported formats: QR Code + Industrial 1D Barcodes + Data Matrix
@@ -270,29 +343,30 @@ export function BarcodeScannerModal({
           throw new Error('Semua opsi kamera gagal dibuka. Pastikan izin kamera aktif.');
         }
 
-        // Apply continuous autofocus & inspect torch capability on active track
+        // Post-start WebKit video check and continuous autofocus
         try {
           const videoEl = container.querySelector('video') as HTMLVideoElement | null;
-          if (videoEl && videoEl.srcObject instanceof MediaStream) {
-            const [track] = videoEl.srcObject.getVideoTracks();
-            if (track) {
-              activeTrackRef.current = track;
-              const caps = (track.getCapabilities && track.getCapabilities()) || {};
-              if (
-                caps.focusMode &&
-                Array.isArray(caps.focusMode) &&
-                caps.focusMode.includes('continuous')
-              ) {
-                await track.applyConstraints({
-                  advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
-                }).catch(() => {});
-              }
-              if ('torch' in caps) {
-                setHasTorch(true);
-                setIsTorchOn(false);
-              } else {
-                setHasTorch(false);
-                setIsTorchOn(false);
+          if (videoEl) {
+            patchVideoElementForWebKit(videoEl);
+
+            if (videoEl.srcObject instanceof MediaStream) {
+              const [track] = videoEl.srcObject.getVideoTracks();
+              if (track) {
+                activeTrackRef.current = track;
+                const caps = ((track.getCapabilities && track.getCapabilities()) || {}) as Record<string, unknown>;
+                const focusModeList = caps.focusMode;
+                if (Array.isArray(focusModeList) && focusModeList.includes('continuous')) {
+                  await track.applyConstraints({
+                    advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
+                  }).catch(() => {});
+                }
+                if ('torch' in caps && Boolean(caps.torch)) {
+                  setHasTorch(true);
+                  setIsTorchOn(false);
+                } else {
+                  setHasTorch(false);
+                  setIsTorchOn(false);
+                }
               }
             }
           }
@@ -355,7 +429,7 @@ export function BarcodeScannerModal({
         isStartingRef.current = false;
       }
     },
-    [handleScanMatched, stopScanner]
+    [handleScanMatched, stopScanner, patchVideoElementForWebKit]
   );
 
   // Initialize camera whenever modal is opened
@@ -458,6 +532,41 @@ export function BarcodeScannerModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
+      {/* Global CSS to prevent iOS WebKit / Safari video collapsing and black screen */}
+      <style>{`
+        #${scannerContainerId} {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 260px !important;
+          position: relative !important;
+          overflow: hidden !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          -webkit-transform: translateZ(0) !important;
+          transform: translateZ(0) !important;
+        }
+        #${scannerContainerId} video {
+          width: 100% !important;
+          height: 100% !important;
+          min-width: 100% !important;
+          min-height: 100% !important;
+          object-fit: cover !important;
+          display: block !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          -webkit-transform: translateZ(0) !important;
+          transform: translateZ(0) !important;
+        }
+        #${scannerContainerId} canvas {
+          display: none !important;
+        }
+        #${scannerContainerId} #qr-shaded-region {
+          display: none !important;
+        }
+      `}</style>
+
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800/80 bg-slate-900/80 shrink-0">
@@ -485,12 +594,19 @@ export function BarcodeScannerModal({
 
         {/* Content Body */}
         <div className="p-4 sm:p-6 flex flex-col items-center overflow-y-auto">
-          {/* Viewport Box */}
-          <div className="relative w-full aspect-square max-w-[280px] sm:max-w-[340px] rounded-2xl overflow-hidden bg-black border border-slate-700/80 flex items-center justify-center shadow-inner shrink-0 min-h-[260px]">
+          {/* Viewport Box with WebKit GPU acceleration fixes */}
+          <div
+            className="relative w-full aspect-square max-w-[280px] sm:max-w-[340px] rounded-2xl overflow-hidden bg-black border border-slate-700/80 flex items-center justify-center shadow-inner shrink-0 min-h-[260px]"
+            style={{
+              WebkitTransform: 'translateZ(0)',
+              transform: 'translateZ(0)',
+              WebkitMaskImage: '-webkit-radial-gradient(white, black)',
+            }}
+          >
             {/* The html5-qrcode target div */}
             <div
               id={scannerContainerId}
-              className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover [&_canvas]:hidden"
+              className="w-full h-full"
             />
 
             {/* Reticle / Viewfinder Overlay - Rectangular for both 1D Barcodes & QR Codes */}

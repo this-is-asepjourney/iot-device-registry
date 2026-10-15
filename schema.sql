@@ -42,9 +42,12 @@ CREATE TABLE IF NOT EXISTS installation_history (
   performed_by TEXT NOT NULL
 );
 
--- Indeks performa
+-- Indeks performa tinggi (Eco-indexing untuk mencegah full table scan)
 CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
+CREATE INDEX IF NOT EXISTS idx_devices_updated_at ON devices(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_devices_status_updated ON devices(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mac_index_mcid ON mac_index(mcid);
+CREATE INDEX IF NOT EXISTS idx_mac_index_status ON mac_index(status);
 CREATE INDEX IF NOT EXISTS idx_history_mcid ON installation_history(mcid);
 CREATE INDEX IF NOT EXISTS idx_history_timestamp ON installation_history(timestamp DESC);
 
@@ -66,3 +69,4 @@ CREATE TABLE IF NOT EXISTS installation_plans (
 
 CREATE INDEX IF NOT EXISTS idx_plans_mcid ON installation_plans(mcid);
 CREATE INDEX IF NOT EXISTS idx_plans_status ON installation_plans(status);
+CREATE INDEX IF NOT EXISTS idx_plans_status_created ON installation_plans(status, created_at DESC);

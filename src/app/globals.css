@@ -42,3 +42,31 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+/* Futuristic animations for cool loaders and overlays */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 14s linear infinite;
+}
+
+.animate-spin-reverse {
+  animation: spinReverse 9s linear infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 1.8s infinite ease-in-out;
+}

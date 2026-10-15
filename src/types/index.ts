@@ -91,12 +91,14 @@ export interface ImportDeviceItem {
 export interface ImportDevicesPayload {
   items: ImportDeviceItem[];
   technicianEmail: string;
+  updateExisting?: boolean; // When true, existing MCIDs will be remapped to new MAC address
 }
 
 export interface ImportDevicesResult {
   success: boolean;
   totalRequested: number;
   importedCount: number;
+  updatedCount?: number;
   skippedCount: number;
   errors?: string[];
   message: string;
@@ -170,14 +172,17 @@ export interface ImportPlanItem {
 export interface ImportPlansPayload {
   items: ImportPlanItem[];
   technicianEmail?: string;
+  autoSyncInstalled?: boolean; // When true, any MCID matching an active device is set to 'Installed'
 }
 
 export interface ImportPlansResult {
   success: boolean;
   totalRequested: number;
   importedCount: number;
+  syncedCount?: number;
   skippedCount: number;
   errors?: string[];
   message: string;
 }
+
 

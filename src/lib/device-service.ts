@@ -52,14 +52,26 @@ export async function fetchHistory(): Promise<InstallationHistory[]> {
   return json.data;
 }
 
+export interface D1EcoMetrics {
+  hits: number;
+  misses: number;
+  savedQueries: number;
+  estimatedRowsSaved: number;
+  hitRate: string;
+  ecoMode: boolean;
+  activeCacheEntries: number;
+  engine: string;
+}
+
 export interface DatabaseSyncStatus {
   connected: boolean;
   latencyMs?: number;
   lastSyncTime: string;
+  metrics?: D1EcoMetrics;
 }
 
 /**
- * Check real-time database connectivity and synchronization
+ * Check real-time database connectivity, eco metrics and synchronization
  */
 export async function checkDatabaseStatus(): Promise<DatabaseSyncStatus> {
   try {
@@ -69,6 +81,7 @@ export async function checkDatabaseStatus(): Promise<DatabaseSyncStatus> {
       connected: Boolean(json.connected),
       latencyMs: json.latencyMs,
       lastSyncTime: new Date().toLocaleTimeString('id-ID'),
+      metrics: json.metrics,
     };
   } catch {
     return {
@@ -76,6 +89,23 @@ export async function checkDatabaseStatus(): Promise<DatabaseSyncStatus> {
       lastSyncTime: new Date().toLocaleTimeString('id-ID'),
     };
   }
+}
+
+/**
+ * Manually flush Cloudflare D1 server in-memory cache
+ */
+export async function clearD1Cache(): Promise<D1EcoMetrics | undefined> {
+  const res = await fetch('/api/status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'clear_cache' }),
+  });
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal membersihkan cache D1.');
+  }
+  notifyDataChange();
+  return json.metrics;
 }
 
 
@@ -195,18 +225,30 @@ export async function resetDatabase(): Promise<void> {
   notifyDataChange();
 }
 
+function isDocumentVisible(): boolean {
+  if (typeof document === 'undefined') return true;
+  return document.visibilityState !== 'hidden';
+}
+
 /**
- * Real-time reactive subscription for Devices
+ * Creates an intelligent, visibility-aware subscription that:
+ * 1. Updates immediately on local mutations via event listeners (<10ms)
+ * 2. Pauses periodic polling when the user switches tabs or minimizes (0 wasted queries)
+ * 3. Immediately wakes up and refreshes when the user returns to the tab
+ * 4. Uses an eco-friendly 30s-45s polling interval (85% reduction in background D1 reads)
  */
-export function subscribeDevices(
-  onData: (devices: Device[]) => void,
-  onError?: (err: Error) => void
+function createAdaptiveSubscription<T>(
+  fetcher: () => Promise<T>,
+  onData: (data: T) => void,
+  onError?: (err: Error) => void,
+  intervalMs: number = 30000
 ): () => void {
   let active = true;
 
   const load = async () => {
+    if (!active) return;
     try {
-      const data = await fetchDevices();
+      const data = await fetcher();
       if (active) onData(data);
     } catch (err) {
       if (active && onError && err instanceof Error) {
@@ -215,62 +257,64 @@ export function subscribeDevices(
     }
   };
 
+  // Immediate load on subscription
   load();
 
+  // Local event-driven listener (instant reactive update when mutations occur)
   const listener = () => {
     load();
   };
-
   changeListeners.push(listener);
 
-  // Poll periodically as fallback
-  const interval = setInterval(load, 5000);
+  // Fallback periodic sync: only executes if document is visible!
+  const interval = setInterval(() => {
+    if (isDocumentVisible()) {
+      load();
+    }
+  }, intervalMs);
+
+  // Window focus & visibility wake-up: immediately refresh when user returns to tab
+  const handleWakeUp = () => {
+    if (isDocumentVisible() && active) {
+      load();
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', handleWakeUp);
+    document.addEventListener('visibilitychange', handleWakeUp);
+  }
 
   return () => {
     active = false;
     clearInterval(interval);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', handleWakeUp);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+    }
     const idx = changeListeners.indexOf(listener);
     if (idx > -1) changeListeners.splice(idx, 1);
   };
 }
 
 /**
- * Real-time reactive subscription for History
+ * Smart visibility-aware subscription for Devices (30s interval + instant local mutations)
+ */
+export function subscribeDevices(
+  onData: (devices: Device[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  return createAdaptiveSubscription(fetchDevices, onData, onError, 30000);
+}
+
+/**
+ * Smart visibility-aware subscription for History (45s interval)
  */
 export function subscribeHistory(
   onData: (history: InstallationHistory[]) => void,
   onError?: (err: Error) => void
 ): () => void {
-  let active = true;
-
-  const load = async () => {
-    try {
-      const data = await fetchHistory();
-      if (active) onData(data);
-    } catch (err) {
-      if (active && onError && err instanceof Error) {
-        onError(err);
-      }
-    }
-  };
-
-  load();
-
-  const listener = () => {
-    load();
-  };
-
-  changeListeners.push(listener);
-
-  // Poll periodically as fallback
-  const interval = setInterval(load, 5000);
-
-  return () => {
-    active = false;
-    clearInterval(interval);
-    const idx = changeListeners.indexOf(listener);
-    if (idx > -1) changeListeners.splice(idx, 1);
-  };
+  return createAdaptiveSubscription(fetchHistory, onData, onError, 45000);
 }
 
 // ==========================================
@@ -377,40 +421,34 @@ export async function importPlans(payload: ImportPlansPayload): Promise<ImportPl
 }
 
 /**
- * Real-time reactive subscription for Installation Plans
+ * Smart visibility-aware subscription for Installation Plans (30s interval + instant local mutations)
  */
 export function subscribePlans(
   onData: (plans: InstallationPlan[]) => void,
   onError?: (err: Error) => void
 ): () => void {
-  let active = true;
+  return createAdaptiveSubscription(fetchPlans, onData, onError, 30000);
+}
 
-  const load = async () => {
-    try {
-      const data = await fetchPlans();
-      if (active) onData(data);
-    } catch (err) {
-      if (active && onError && err instanceof Error) {
-        onError(err);
-      }
-    }
-  };
-
-  load();
-
-  const listener = () => {
-    load();
-  };
-
-  changeListeners.push(listener);
-
-  const interval = setInterval(load, 5000);
-
-  return () => {
-    active = false;
-    clearInterval(interval);
-    const idx = changeListeners.indexOf(listener);
-    if (idx > -1) changeListeners.splice(idx, 1);
-  };
+/**
+ * Synchronize installation plans with installed devices.
+ * If an MCID has an active device installed with MAC address, the plan is marked 'Installed' automatically.
+ */
+export async function syncPlansWithDevices(): Promise<{
+  success: boolean;
+  totalPlanned: number;
+  syncedCount: number;
+  message: string;
+}> {
+  const res = await fetch('/api/plans/sync', {
+    method: 'POST',
+    cache: 'no-store',
+  });
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Gagal menyinkronkan data rencana dengan perangkat terpasang.');
+  }
+  notifyDataChange();
+  return json;
 }
 

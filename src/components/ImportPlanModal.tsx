@@ -21,6 +21,7 @@ import {
 } from '@/lib/excel-utils';
 import { importPlans } from '@/lib/device-service';
 import { useAuth } from '@/context/AuthContext';
+import { ImportLoadingOverlay } from './ImportLoadingOverlay';
 
 interface ImportPlanModalProps {
   isOpen: boolean;
@@ -123,7 +124,7 @@ export function ImportPlanModal({ isOpen, onClose }: ImportPlanModalProps) {
       setTimeout(() => {
         handleReset();
         onClose();
-      }, 1500);
+      }, 2000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setParseError(msg);
@@ -133,9 +134,24 @@ export function ImportPlanModal({ isOpen, onClose }: ImportPlanModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 text-slate-100 max-h-[90vh] flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
-        {/* Header */}
+    <>
+      <ImportLoadingOverlay
+        isOpen={isSubmitting || !!successResult}
+        title="Memproses Import Rencana"
+        subtitle="Mendaftarkan rencana pemasangan dan menyinkronkan status dengan perangkat aktif..."
+        totalItems={validRows.length}
+        isSuccess={!!successResult}
+        successMessage={successResult}
+        errorMessage={parseError && isSubmitting ? parseError : null}
+        onDone={() => {
+          handleReset();
+          onClose();
+        }}
+      />
+
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+        <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 text-slate-100 max-h-[90vh] flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
+          {/* Header */}
         <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
@@ -437,5 +453,6 @@ export function ImportPlanModal({ isOpen, onClose }: ImportPlanModalProps) {
         </div>
       </div>
     </div>
-  );
+  </>
+);
 }

@@ -17,6 +17,7 @@ import {
   TrendingUp,
   SlidersHorizontal,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import { InstallationPlan, PlanStatus, FACTORY_LIST } from '@/types';
 import {
@@ -30,7 +31,7 @@ import {
   downloadPlanTemplateExcel,
   exportPlansToExcel,
 } from '@/lib/excel-utils';
-import { deletePlan } from '@/lib/device-service';
+import { deletePlan, syncPlansWithDevices } from '@/lib/device-service';
 
 interface PlanningListProps {
   plans: InstallationPlan[];
@@ -58,6 +59,11 @@ export function PlanningList({
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncNotification, setSyncNotification] = useState<{
+    type: 'success' | 'info' | 'error';
+    text: string;
+  } | null>(null);
 
   // Metrics
   const totalCount = plans.length;
@@ -185,6 +191,28 @@ export function PlanningList({
       alert(err instanceof Error ? err.message : 'Gagal menghapus rencana.');
     } finally {
       setIsDeletingId(null);
+    }
+  };
+
+  const handleSyncPlans = async () => {
+    setIsSyncing(true);
+    setSyncNotification(null);
+    try {
+      const res = await syncPlansWithDevices();
+      setSyncNotification({
+        type: res.syncedCount > 0 ? 'success' : 'info',
+        text: res.message,
+      });
+      setTimeout(() => {
+        setSyncNotification(null);
+      }, 5000);
+    } catch (err: unknown) {
+      setSyncNotification({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Gagal menyinkronkan data rencana.',
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -320,6 +348,17 @@ export function PlanningList({
               <span>Import Excel</span>
             </button>
 
+            {/* Sinkronkan Otomatis dengan Device Terpasang */}
+            <button
+              onClick={handleSyncPlans}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-950/50 hover:bg-indigo-900/70 text-indigo-300 border border-indigo-700/60 hover:border-indigo-500/80 shadow-sm transition-all active:scale-95 disabled:opacity-50"
+              title="Sinkronkan status planning dengan data perangkat IoT yang sudah terpasang di mesin"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 text-indigo-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Status'}</span>
+            </button>
+
             {/* Tambah Plan Manual */}
             <button
               onClick={onOpenCreateModal}
@@ -342,6 +381,36 @@ export function PlanningList({
             )}
           </div>
         </div>
+
+        {/* Sync Notification Banner */}
+        {syncNotification && (
+          <div
+            className={`p-3 rounded-xl border flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-1 duration-200 ${
+              syncNotification.type === 'success'
+                ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-200 shadow-md shadow-emerald-950/30'
+                : syncNotification.type === 'error'
+                ? 'bg-rose-950/50 border-rose-500/50 text-rose-200 shadow-md shadow-rose-950/30'
+                : 'bg-indigo-950/50 border-indigo-500/50 text-indigo-200 shadow-md shadow-indigo-950/30'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              {syncNotification.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : syncNotification.type === 'error' ? (
+                <Clock className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <Clock className="w-4 h-4 text-indigo-400 shrink-0" />
+              )}
+              <span className="leading-relaxed">{syncNotification.text}</span>
+            </div>
+            <button
+              onClick={() => setSyncNotification(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors shrink-0 ml-2"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Filter Controls Row */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 pt-2 border-t border-slate-800/60">
