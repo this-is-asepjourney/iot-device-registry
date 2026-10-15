@@ -11,6 +11,8 @@ import {
   Volume2,
   SwitchCamera,
   Keyboard,
+  Flashlight,
+  FlashlightOff,
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { playBeepSound, normalizeMacAddress, formatMacAddress, normalizeMcid } from '@/lib/utils';
@@ -43,8 +45,11 @@ export function BarcodeScannerModal({
   const [scannedResult, setScannedResult] = useState<string | null>(null);
   const [isManualInput, setIsManualInput] = useState(false);
   const [manualText, setManualText] = useState('');
+  const [hasTorch, setHasTorch] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const activeTrackRef = useRef<MediaStreamTrack | null>(null);
   const isStartingRef = useRef(false);
   const isMountedRef = useRef(true);
   const onScanSuccessRef = useRef(onScanSuccess);
@@ -58,8 +63,24 @@ export function BarcodeScannerModal({
 
   const scannerContainerId = 'interactive-barcode-scanner-viewport';
 
-  // Safely stop and clear scanner instance
+  // Safely stop and clear scanner instance and release hardware camera tracks
   const stopScanner = useCallback(async () => {
+    // 1. Turn off torch and stop active video track if present
+    if (activeTrackRef.current) {
+      try {
+        await activeTrackRef.current.applyConstraints({
+          advanced: [{ torch: false } as MediaTrackConstraintSet],
+        });
+      } catch {}
+      try {
+        activeTrackRef.current.stop();
+      } catch {}
+      activeTrackRef.current = null;
+    }
+    setIsTorchOn(false);
+    setHasTorch(false);
+
+    // 2. Stop html5-qrcode instance
     const scanner = scannerRef.current;
     if (scanner) {
       try {
@@ -77,11 +98,22 @@ export function BarcodeScannerModal({
       scannerRef.current = null;
     }
 
-    // Clean up any lingering injected elements from container
+    // 3. Clean up any lingering video elements and media streams from container
     if (typeof document !== 'undefined') {
-      const el = document.getElementById(scannerContainerId);
-      if (el) {
-        el.innerHTML = '';
+      const container = document.getElementById(scannerContainerId);
+      if (container) {
+        const videos = container.querySelectorAll('video');
+        videos.forEach((video) => {
+          if (video.srcObject instanceof MediaStream) {
+            video.srcObject.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch {}
+            });
+            video.srcObject = null;
+          }
+        });
+        container.innerHTML = '';
       }
     }
   }, []);
@@ -115,10 +147,7 @@ export function BarcodeScannerModal({
 
   // Helper to start camera scanner with fallback chain
   const startCameraInstance = useCallback(
-    async (
-      camId: string | null,
-      mode: 'environment' | 'user'
-    ) => {
+    async (camId: string | null, mode: 'environment' | 'user') => {
       if (isStartingRef.current) return;
       isStartingRef.current = true;
 
@@ -133,23 +162,27 @@ export function BarcodeScannerModal({
         return;
       }
 
-      const element = document.getElementById(scannerContainerId);
-      if (!element) {
+      const container = document.getElementById(scannerContainerId);
+      if (!container) {
         isStartingRef.current = false;
         return;
       }
-      element.innerHTML = '';
+      container.innerHTML = '';
 
       try {
-        // Supported formats: QR Code + Standard 1D Industrial Barcodes
+        // Supported formats: QR Code + Industrial 1D Barcodes + Data Matrix
         const html5QrCode = new Html5Qrcode(scannerContainerId, {
           formatsToSupport: [
             Html5QrcodeSupportedFormats.QR_CODE,
             Html5QrcodeSupportedFormats.CODE_128,
             Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.DATA_MATRIX,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
           ],
           verbose: false,
         });
@@ -163,21 +196,16 @@ export function BarcodeScannerModal({
           // No-op per frame scan miss
         };
 
-        // Note: Do NOT set aspectRatio here!
-        // Setting aspectRatio causes track.applyConstraints({ aspectRatio }) which throws
-        // OverconstrainedError on mobile rear cameras. Let camera stream naturally.
+        // Note: Do not constrain qrbox to a small square.
+        // Full frame scan allows wide 1D barcodes (MAC Code 128 / Code 39)
+        // and 2D QR codes to be decoded smoothly without coordinate offset distortion.
         const config = {
           fps: 15,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const edgeSize = Math.max(160, Math.floor(minEdge * 0.75));
-            return { width: edgeSize, height: edgeSize };
-          },
         };
 
         let started = false;
 
-        // Attempt 1: Try specific cameraId if explicitly selected by user
+        // Attempt 1: Try specific cameraId if explicitly selected by user from dropdown
         if (camId) {
           try {
             await html5QrCode.start(
@@ -188,11 +216,11 @@ export function BarcodeScannerModal({
             );
             started = true;
           } catch (camErr) {
-            console.warn(`Starting camera ID ${camId} failed, trying fallback:`, camErr);
+            console.warn(`Starting camera ID ${camId} failed:`, camErr);
           }
         }
 
-        // Attempt 2: Try facingMode (natively selects rear/environment camera on phones)
+        // Attempt 2: Try facingMode (natively selects best primary rear camera on mobile phones)
         if (!started) {
           try {
             await html5QrCode.start(
@@ -203,11 +231,11 @@ export function BarcodeScannerModal({
             );
             started = true;
           } catch (modeErr) {
-            console.warn(`Starting facingMode ${mode} failed, trying inverse/default:`, modeErr);
+            console.warn(`Starting facingMode ${mode} failed:`, modeErr);
           }
         }
 
-        // Attempt 3: Try opposite facingMode (e.g. laptop webcam if environment failed)
+        // Attempt 3: If environment failed (e.g. laptop / PC webcam without rear camera)
         if (!started && mode === 'environment') {
           try {
             await html5QrCode.start(
@@ -223,7 +251,7 @@ export function BarcodeScannerModal({
           }
         }
 
-        // Attempt 4: Fallback to any default video device
+        // Attempt 4: Fallback to any enumerated video device
         if (!started) {
           const devices = await Html5Qrcode.getCameras().catch(() => []);
           if (devices && devices.length > 0) {
@@ -242,27 +270,45 @@ export function BarcodeScannerModal({
           throw new Error('Semua opsi kamera gagal dibuka. Pastikan izin kamera aktif.');
         }
 
-        // Now that permission is granted and stream is open, populate real camera labels
+        // Apply continuous autofocus & inspect torch capability on active track
+        try {
+          const videoEl = container.querySelector('video') as HTMLVideoElement | null;
+          if (videoEl && videoEl.srcObject instanceof MediaStream) {
+            const [track] = videoEl.srcObject.getVideoTracks();
+            if (track) {
+              activeTrackRef.current = track;
+              const caps = (track.getCapabilities && track.getCapabilities()) || {};
+              if (
+                caps.focusMode &&
+                Array.isArray(caps.focusMode) &&
+                caps.focusMode.includes('continuous')
+              ) {
+                await track.applyConstraints({
+                  advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
+                }).catch(() => {});
+              }
+              if ('torch' in caps) {
+                setHasTorch(true);
+                setIsTorchOn(false);
+              } else {
+                setHasTorch(false);
+                setIsTorchOn(false);
+              }
+            }
+          }
+        } catch {
+          // Ignore track constraint error
+        }
+
+        // Query available cameras to populate camera switcher list
         try {
           const availableCams = await Html5Qrcode.getCameras();
-          if (isMountedRef.current && availableCams.length > 0) {
+          if (isMountedRef.current && availableCams && availableCams.length > 0) {
             const formatted = availableCams.map((c) => ({
               id: c.id,
               label: c.label || `Kamera ${c.id.slice(0, 4)}`,
             }));
             setCameras(formatted);
-
-            // Update selectedCameraId if not yet set
-            if (!camId) {
-              const activeRear = formatted.find((c) =>
-                /back|rear|environment|belakang|traseira/i.test(c.label)
-              );
-              if (activeRear) {
-                setSelectedCameraId(activeRear.id);
-              } else {
-                setSelectedCameraId(formatted[0].id);
-              }
-            }
           }
         } catch {
           // Ignore enumeration errors
@@ -312,7 +358,7 @@ export function BarcodeScannerModal({
     [handleScanMatched, stopScanner]
   );
 
-  // Initialize or restart camera whenever modal is opened or camera changes
+  // Initialize camera whenever modal is opened
   useEffect(() => {
     isMountedRef.current = true;
 
@@ -322,14 +368,14 @@ export function BarcodeScannerModal({
       setErrorMessage('');
       setIsManualInput(false);
       setManualText('');
-
-      // Start camera directly with facingMode (natively selects rear camera on mobile)
-      const initScanner = async () => {
-        await startCameraInstance(selectedCameraId, facingMode);
-      };
+      setFacingMode('environment'); // Always start with rear camera
+      setSelectedCameraId(null);
+      setIsTorchOn(false);
 
       const timer = setTimeout(() => {
-        initScanner();
+        if (isMountedRef.current) {
+          startCameraInstance(null, 'environment');
+        }
       }, 150);
 
       return () => {
@@ -344,21 +390,27 @@ export function BarcodeScannerModal({
       isMountedRef.current = false;
       stopScanner();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]); // Only rerun when modal opens/closes to prevent restart loops
+  }, [isOpen, startCameraInstance, stopScanner]);
 
-  // Switch between cameras (toggle between cameras or front/back)
-  const handleToggleCamera = async () => {
-    if (cameras.length > 1) {
-      const currentIdx = cameras.findIndex((c) => c.id === selectedCameraId);
-      const nextIdx = (currentIdx + 1) % cameras.length;
-      const nextCam = cameras[nextIdx];
-      setSelectedCameraId(nextCam.id);
-      await startCameraInstance(nextCam.id, facingMode);
-    } else {
-      const nextMode = facingMode === 'environment' ? 'user' : 'environment';
-      setFacingMode(nextMode);
-      await startCameraInstance(null, nextMode);
+  // Toggle between rear camera and front camera
+  const handleToggleFacingMode = async () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
+    setSelectedCameraId(null);
+    await startCameraInstance(null, nextMode);
+  };
+
+  // Toggle Torch (flashlight)
+  const handleToggleTorch = async () => {
+    if (!activeTrackRef.current) return;
+    try {
+      const nextTorch = !isTorchOn;
+      await activeTrackRef.current.applyConstraints({
+        advanced: [{ torch: nextTorch } as MediaTrackConstraintSet],
+      });
+      setIsTorchOn(nextTorch);
+    } catch (err) {
+      console.warn('Torch toggle failed:', err);
     }
   };
 
@@ -401,13 +453,8 @@ export function BarcodeScannerModal({
 
   if (!isOpen) return null;
 
-  // Active camera display label
-  const activeCameraObj = cameras.find((c) => c.id === selectedCameraId);
-  const cameraLabel = activeCameraObj
-    ? activeCameraObj.label
-    : facingMode === 'environment'
-    ? 'Kamera Belakang'
-    : 'Kamera Depan';
+  const cameraLabel =
+    facingMode === 'environment' ? 'Kamera Belakang' : 'Kamera Depan';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
@@ -446,18 +493,23 @@ export function BarcodeScannerModal({
               className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover [&_canvas]:hidden"
             />
 
-            {/* Reticle / Viewfinder Overlay */}
+            {/* Reticle / Viewfinder Overlay - Rectangular for both 1D Barcodes & QR Codes */}
             {scannerStatus === 'scanning' && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="w-48 h-48 sm:w-56 sm:h-56 border-2 border-cyan-400/80 rounded-xl relative">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
+                <div className="w-56 h-40 sm:w-64 sm:h-48 border-2 border-cyan-400/80 rounded-2xl relative shadow-[0_0_20px_rgba(6,182,212,0.15)]">
                   {/* Corner accents */}
-                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-2 border-l-2 border-cyan-300" />
-                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-2 border-r-2 border-cyan-300" />
-                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-2 border-l-2 border-cyan-300" />
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-2 border-r-2 border-cyan-300" />
+                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 border-cyan-300 rounded-tl-lg" />
+                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 border-cyan-300 rounded-tr-lg" />
+                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-2 border-l-2 border-cyan-300 rounded-bl-lg" />
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-2 border-r-2 border-cyan-300 rounded-br-lg" />
 
                   {/* Animated laser scan line */}
-                  <div className="absolute left-1 right-1 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_10px_#06b6d4] animate-pulse top-1/2 -translate-y-1/2" />
+                  <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_#06b6d4] animate-pulse top-1/2 -translate-y-1/2" />
+
+                  {/* Target Field Hint Overlay badge inside reticle */}
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-slate-900/85 border border-slate-700 text-[10px] text-cyan-300 font-mono tracking-wider shadow-sm whitespace-nowrap">
+                    {targetField === 'mac' ? 'MAC BARCODE / QR' : 'MCID BARCODE / QR'}
+                  </div>
                 </div>
               </div>
             )}
@@ -502,7 +554,7 @@ export function BarcodeScannerModal({
                     Coba Lagi
                   </button>
                   <button
-                    onClick={handleToggleCamera}
+                    onClick={handleToggleFacingMode}
                     className="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-700"
                   >
                     <SwitchCamera className="w-3.5 h-3.5" />
@@ -522,14 +574,36 @@ export function BarcodeScannerModal({
 
           {/* Controls bar below camera */}
           <div className="flex items-center justify-between w-full mt-3.5 text-xs text-slate-400 gap-2">
+            {/* Toggle Rear / Front Camera */}
             <button
-              onClick={handleToggleCamera}
+              onClick={handleToggleFacingMode}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 active:scale-95 transition-all text-xs border border-slate-700/60"
-              title="Ganti Kamera"
+              title="Ganti Kamera Belakang / Depan"
             >
               <SwitchCamera className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span className="truncate max-w-[140px] sm:max-w-[170px]">{cameraLabel}</span>
+              <span className="truncate max-w-[130px] sm:max-w-[160px]">{cameraLabel}</span>
             </button>
+
+            {/* Flashlight / Torch toggle button (if supported by device rear camera) */}
+            {hasTorch && (
+              <button
+                type="button"
+                onClick={handleToggleTorch}
+                className={`px-3 py-2 rounded-xl active:scale-95 transition-all text-xs border flex items-center gap-1.5 ${
+                  isTorchOn
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700/60'
+                }`}
+                title={isTorchOn ? 'Matikan Senter' : 'Nyalakan Senter'}
+              >
+                {isTorchOn ? (
+                  <FlashlightOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                ) : (
+                  <Flashlight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                )}
+                <span className="hidden xs:inline">{isTorchOn ? 'Senter Aktif' : 'Senter'}</span>
+              </button>
+            )}
 
             {/* Upload image fallback */}
             <label className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 cursor-pointer active:scale-95 transition-all text-xs border border-slate-700/60">
@@ -543,6 +617,40 @@ export function BarcodeScannerModal({
               />
             </label>
           </div>
+
+          {/* Optional camera lens selector if device has multiple cameras */}
+          {cameras.length > 2 && (
+            <div className="w-full mt-2.5 flex items-center gap-2 text-[11px] text-slate-400">
+              <span className="shrink-0 text-slate-500">Pilih Lensa:</span>
+              <select
+                value={selectedCameraId || (facingMode === 'environment' ? 'env' : 'usr')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'env') {
+                    setFacingMode('environment');
+                    setSelectedCameraId(null);
+                    startCameraInstance(null, 'environment');
+                  } else if (val === 'usr') {
+                    setFacingMode('user');
+                    setSelectedCameraId(null);
+                    startCameraInstance(null, 'user');
+                  } else {
+                    setSelectedCameraId(val);
+                    startCameraInstance(val, facingMode);
+                  }
+                }}
+                className="flex-1 bg-slate-900 border border-slate-700/80 text-slate-200 rounded-lg px-2 py-1 text-[11px] truncate focus:outline-none focus:border-cyan-500"
+              >
+                <option value="env">Kamera Belakang (Otomatis)</option>
+                <option value="usr">Kamera Depan (Selfie/Webcam)</option>
+                {cameras.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Manual input fallback */}
           {isManualInput ? (
