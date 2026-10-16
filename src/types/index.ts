@@ -44,6 +44,7 @@ export interface InstallDevicePayload {
   location: string;
   notes?: string;
   technicianEmail: string;
+  installedAt?: string; // ISO 8601 string when installation took place
 }
 
 export interface ReplaceDevicePayload {
@@ -71,6 +72,7 @@ export interface EditDevicePayload {
   status: DeviceStatus;
   notes?: string;
   technicianEmail: string;
+  installedAt?: string; // ISO 8601 string for editing/correcting installation timestamp
 }
 
 export interface DeleteDevicePayload {
@@ -86,6 +88,7 @@ export interface ImportDeviceItem {
   factory: FactoryCode;
   line?: string;
   notes?: string;
+  installedAt?: string; // ISO 8601 or parsed date of installation
 }
 
 export interface ImportDevicesPayload {
@@ -158,6 +161,7 @@ export interface CompletePlanPayload {
   location?: string;
   notes?: string;
   technicianEmail: string;
+  installedAt?: string; // ISO 8601 string for installation timestamp
 }
 
 export interface ImportPlanItem {

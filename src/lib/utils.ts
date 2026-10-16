@@ -69,6 +69,60 @@ export function formatDate(isoString: string): string {
 }
 
 /**
+ * Converts a Date object or ISO string into a local datetime string for <input type="datetime-local" />
+ * Format: YYYY-MM-DDTHH:mm
+ */
+export function toLocalDatetimeInputString(dateInput?: string | Date | null): string {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+/**
+ * Parses flexible date inputs from CSV/Excel text into an ISO 8601 string.
+ * Supports:
+ * - ISO string: 2026-10-15T14:30:00Z
+ * - YYYY-MM-DD HH:mm(:ss) or YYYY-MM-DD
+ * - DD/MM/YYYY HH:mm(:ss) or DD/MM/YYYY
+ * - DD-MM-YYYY HH:mm(:ss) or DD-MM-YYYY
+ */
+export function parseFlexibleDate(rawDateStr?: string | null): string | null {
+  if (!rawDateStr || typeof rawDateStr !== 'string') return null;
+  const str = rawDateStr.trim();
+  if (!str) return null;
+
+  // 1. Direct standard Date parse (ISO format or browser compatible)
+  const directDate = new Date(str);
+  if (!isNaN(directDate.getTime()) && str.includes('-') && str.length >= 10 && directDate.getFullYear() > 2000) {
+    return directDate.toISOString();
+  }
+
+  // 2. YYYY-MM-DD or YYYY-MM-DD HH:mm(:ss)
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (isoMatch) {
+    const [, y, m, d, hh = '12', mm = '00', ss = '00'] = isoMatch;
+    const date = new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss));
+    if (!isNaN(date.getTime())) return date.toISOString();
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY or with time HH:mm(:ss)
+  const dmyMatch = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (dmyMatch) {
+    const [, d, m, y, hh = '12', mm = '00', ss = '00'] = dmyMatch;
+    const date = new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss));
+    if (!isNaN(date.getTime())) return date.toISOString();
+  }
+
+  return null;
+}
+
+/**
  * Plays a crisp synthesized audio beep on successful barcode/QR scan using the Web Audio API.
  */
 export function playBeepSound(): void {

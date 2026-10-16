@@ -12,6 +12,7 @@ interface DeviceCheckRow {
   status: 'Installed' | 'Maintenance' | 'Removed';
   machine_model: string;
   location: string;
+  installed_at: string;
 }
 
 interface MacCheckRow {
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
 
     // 1. Fetch current device record
     const { results: currentDevices } = await queryD1<DeviceCheckRow>(
-      'SELECT mcid, mac_address, normalized_mac, status, machine_model, location FROM devices WHERE mcid = ?',
+      'SELECT mcid, mac_address, normalized_mac, status, machine_model, location, installed_at FROM devices WHERE mcid = ?',
       [normMcid]
     );
 
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
     const macChanged = currentDev.normalized_mac !== normMac;
     const isNowRemoved = payload.status === 'Removed';
     const wasRemoved = currentDev.status === 'Removed';
+
+    const targetInstalledAt =
+      payload.installedAt && !isNaN(new Date(payload.installedAt).getTime())
+        ? new Date(payload.installedAt).toISOString()
+        : currentDev.installed_at;
+    const installedAtChanged = targetInstalledAt !== currentDev.installed_at;
 
     // 2. If MAC changed, check if new MAC is already taken by another machine
     if (macChanged && !isNowRemoved) {
@@ -84,7 +91,7 @@ export async function POST(request: Request) {
     // 3. Update devices table
     batchStatements.push({
       sql: `UPDATE devices 
-            SET mac_address = ?, normalized_mac = ?, machine_model = ?, location = ?, status = ?, notes = ?, updated_at = ?, last_technician = ?
+            SET mac_address = ?, normalized_mac = ?, machine_model = ?, location = ?, status = ?, installed_at = ?, notes = ?, updated_at = ?, last_technician = ?
             WHERE mcid = ?`,
       params: [
         formattedMac,
@@ -92,12 +99,21 @@ export async function POST(request: Request) {
         payload.machineModel.trim(),
         payload.location.trim(),
         payload.status,
+        targetInstalledAt,
         payload.notes?.trim() || '',
         now,
         payload.technicianEmail || 'Admin',
         normMcid,
       ],
     });
+
+    // Also update installed_at in installation_plans if plan exists
+    if (installedAtChanged) {
+      batchStatements.push({
+        sql: `UPDATE installation_plans SET installed_at = ? WHERE mcid = ? AND status = 'Installed'`,
+        params: [targetInstalledAt, normMcid],
+      });
+    }
 
     // 4. Update mac_index table based on changes
     if (isNowRemoved) {
@@ -124,8 +140,8 @@ export async function POST(request: Request) {
     const historyId = `hist-edit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const eventType = macChanged ? 'REPLACE_DEVICE' : 'STATUS_CHANGE';
     const auditNote = macChanged
-      ? `[Koreksi / Edit Data] Ganti MAC ${currentDev.mac_address} -> ${formattedMac}. ${payload.notes || ''}`.trim()
-      : `[Koreksi / Edit Data] Model: ${payload.machineModel}, Lokasi: ${payload.location}. ${payload.notes || ''}`.trim();
+      ? `[Koreksi / Edit Data] Ganti MAC ${currentDev.mac_address} -> ${formattedMac}.${installedAtChanged ? ` Waktu pasang diubah: ${targetInstalledAt}.` : ''} ${payload.notes || ''}`.trim()
+      : `[Koreksi / Edit Data] Model: ${payload.machineModel}, Lokasi: ${payload.location}.${installedAtChanged ? ` Waktu pasang diubah: ${targetInstalledAt}.` : ''} ${payload.notes || ''}`.trim();
 
     batchStatements.push({
       sql: `INSERT INTO installation_history 

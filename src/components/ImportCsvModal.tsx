@@ -12,6 +12,7 @@ import {
   FileText,
   RefreshCw,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 import { Device, FACTORY_LIST, FactoryCode, ImportDeviceItem } from '@/types';
 import { importDevices } from '@/lib/device-service';
@@ -23,6 +24,8 @@ import {
   formatMacAddress,
   isValidMacAddress,
   getFactoryBadgeStyle,
+  parseFlexibleDate,
+  formatDate,
 } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { ImportLoadingOverlay } from './ImportLoadingOverlay';
@@ -40,11 +43,13 @@ interface ParsedRow {
   rawModel: string;
   rawFactory: string;
   rawLine: string;
+  rawInstalledAt: string;
   rawNotes: string;
   normMcid: string;
   normMac: string;
   formattedMac: string;
   factoryCode: FactoryCode | null;
+  installedAtIso: string | null;
   isValid: boolean;
   isRemap?: boolean;
   isUpdate?: boolean;
@@ -74,13 +79,13 @@ export function ImportCsvModal({
 
   // 1. Download official CSV template
   const handleDownloadTemplate = () => {
-    const headers = ['MCID', 'MAC_Address', 'Model_Mesin', 'Factory', 'Line', 'Catatan'];
+    const headers = ['MCID', 'MAC_Address', 'Model_Mesin', 'Factory', 'Line', 'Tanggal_Pemasangan', 'Catatan'];
     const sampleRows = [
-      ['CNC-VF2-05', 'B8:27:EB:4A:88:55', 'Haas CNC Milling VF-2', 'A1', 'Line 1', 'Sensor getaran spindle'],
-      ['PRESS-50T-06', 'DC:A6:32:1B:90:66', 'Aida 50 Ton Hydraulic Press', 'B2', 'Stamping Line 2', 'Sensor hidrolik & stroke'],
-      ['ROBOT-WELD-07', 'E4:5F:01:8C:7D:77', 'Fanuc Arc Mate 100iD', 'C1', 'Line Welding Bay 3', 'Modbus TCP sensor'],
-      ['LATHE-08', 'AA:BB:CC:DD:EE:88', 'Mazak Quick Turn 250', 'D1', 'Turning Line A', 'Modul IoT arus motor'],
-      ['PUMP-COOL-09', '11:22:33:44:55:99', 'Grundfos CR32 High Pressure', 'A2', 'Utility Line 1', 'Sensor tekanan pipa'],
+      ['CNC-VF2-05', 'B8:27:EB:4A:88:55', 'Haas CNC Milling VF-2', 'A1', 'Line 1', '2026-10-14 09:30', 'Sensor getaran spindle'],
+      ['PRESS-50T-06', 'DC:A6:32:1B:90:66', 'Aida 50 Ton Hydraulic Press', 'B2', 'Stamping Line 2', '2026-10-15', 'Sensor hidrolik & stroke'],
+      ['ROBOT-WELD-07', 'E4:5F:01:8C:7D:77', 'Fanuc Arc Mate 100iD', 'C1', 'Line Welding Bay 3', '', 'Modbus TCP sensor'],
+      ['LATHE-08', 'AA:BB:CC:DD:EE:88', 'Mazak Quick Turn 250', 'D1', 'Turning Line A', '2026-10-12', 'Modul IoT arus motor'],
+      ['PUMP-COOL-09', '11:22:33:44:55:99', 'Grundfos CR32 High Pressure', 'A2', 'Utility Line 1', '', 'Sensor tekanan pipa'],
     ];
 
     downloadCsv('template_import_iot_devices.csv', headers, sampleRows);
@@ -103,11 +108,14 @@ export function ImportCsvModal({
       const modelIdx = headerRow.findIndex((h) => h.includes('model') || h.includes('mesin'));
       const factoryIdx = headerRow.findIndex((h) => h.includes('factory') || h.includes('plant'));
       const lineIdx = headerRow.findIndex((h) => h.includes('line') || h.includes('lini'));
+      const dateIdx = headerRow.findIndex((h) =>
+        h.includes('tanggal') || h.includes('waktu') || h.includes('installed') || h.includes('tgl') || h.includes('date')
+      );
       const notesIdx = headerRow.findIndex((h) => h.includes('catatan') || h.includes('note') || h.includes('keterangan'));
 
       if (mcidIdx === -1 || macIdx === -1 || modelIdx === -1 || factoryIdx === -1) {
         setParseError(
-          'Kolom wajib tidak ditemukan. Pastikan header memiliki: MCID, MAC_Address, Model_Mesin, Factory (dan Line, Catatan opsional).'
+          'Kolom wajib tidak ditemukan. Pastikan header memiliki: MCID, MAC_Address, Model_Mesin, Factory (dan Line, Tanggal_Pemasangan, Catatan opsional).'
         );
         setParsedRows([]);
         return;
@@ -139,6 +147,7 @@ export function ImportCsvModal({
         const rawModel = (row[modelIdx] || '').trim();
         const rawFactory = (row[factoryIdx] || '').trim().toUpperCase();
         const rawLine = lineIdx !== -1 ? (row[lineIdx] || '').trim() : '';
+        const rawInstalledAt = dateIdx !== -1 ? (row[dateIdx] || '').trim() : '';
         const rawNotes = notesIdx !== -1 ? (row[notesIdx] || '').trim() : '';
 
         const normMcid = normalizeMcid(rawMcid);
@@ -209,6 +218,17 @@ export function ImportCsvModal({
           factoryCode = rawFactory as FactoryCode;
         }
 
+        // Validate Tanggal / Waktu Pemasangan (Opsional)
+        let installedAtIso: string | null = null;
+        if (rawInstalledAt) {
+          const parsedDate = parseFlexibleDate(rawInstalledAt);
+          if (parsedDate) {
+            installedAtIso = parsedDate;
+          } else {
+            errors.push(`Format tanggal pasang [${rawInstalledAt}] tidak valid. Format: YYYY-MM-DD atau YYYY-MM-DD HH:mm.`);
+          }
+        }
+
         parsed.push({
           rowNumber: i + 1,
           rawMcid,
@@ -216,11 +236,13 @@ export function ImportCsvModal({
           rawModel,
           rawFactory,
           rawLine,
+          rawInstalledAt,
           rawNotes,
           normMcid,
           normMac,
           formattedMac,
           factoryCode,
+          installedAtIso,
           isValid: errors.length === 0,
           isRemap,
           isUpdate,
@@ -322,6 +344,7 @@ export function ImportCsvModal({
       machineModel: r.rawModel,
       factory: r.factoryCode!,
       line: r.rawLine || undefined,
+      installedAt: r.installedAtIso || undefined,
       notes: r.rawNotes || undefined,
     }));
 
@@ -606,6 +629,7 @@ export function ImportCsvModal({
                           <th className="py-2.5 px-3">MAC Address</th>
                           <th className="py-2.5 px-3">Model Mesin</th>
                           <th className="py-2.5 px-3">Factory & Line</th>
+                          <th className="py-2.5 px-3">Waktu Pasang</th>
                           <th className="py-2.5 px-3">Tipe Aksi</th>
                           <th className="py-2.5 px-3 text-right">Status</th>
                         </tr>
@@ -651,6 +675,16 @@ export function ImportCsvModal({
                                     {r.rawLine || '-'}
                                   </span>
                                 </div>
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap">
+                                {r.installedAtIso ? (
+                                  <div className="flex items-center gap-1 text-cyan-300 font-mono text-[11px]" title={r.installedAtIso}>
+                                    <Calendar className="w-3 h-3 text-cyan-400 shrink-0" />
+                                    <span>{formatDate(r.installedAtIso)}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-500 text-[11px] italic">Sekarang (Default)</span>
+                                )}
                               </td>
                               <td className="py-2 px-3">
                                 {r.isRemap ? (

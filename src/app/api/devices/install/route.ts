@@ -68,6 +68,10 @@ export async function POST(request: Request) {
     }
 
     const now = new Date().toISOString();
+    const installedAt =
+      payload.installedAt && !isNaN(new Date(payload.installedAt).getTime())
+        ? new Date(payload.installedAt).toISOString()
+        : now;
     const historyId = `hist-${Date.now()}`;
 
     // 3. Execute atomic transaction in Cloudflare D1 / SQLite:
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
           normMac,
           payload.machineModel.trim(),
           payload.location.trim(),
-          now,
+          installedAt,
           now,
           payload.notes?.trim() || '',
           payload.technicianEmail || '',
@@ -100,13 +104,13 @@ export async function POST(request: Request) {
           payload.machineModel.trim(),
           payload.location.trim(),
           payload.notes?.trim() || 'Pemasangan awal perangkat IoT pada mesin.',
-          now,
+          installedAt,
           payload.technicianEmail || '',
         ],
       },
       {
         sql: `UPDATE installation_plans SET status = 'Installed', installed_mac = ?, installed_at = ?, installed_by = ? WHERE mcid = ? AND status = 'Planned'`,
-        params: [formattedMac, now, payload.technicianEmail || '', normMcid],
+        params: [formattedMac, installedAt, payload.technicianEmail || '', normMcid],
       },
     ]);
 

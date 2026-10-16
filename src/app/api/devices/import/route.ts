@@ -56,6 +56,7 @@ export async function POST(request: Request) {
       isUpdate: boolean;
       oldMac?: string;
       oldNormMac?: string;
+      installedAt: string;
       historyId: string;
     }
 
@@ -153,6 +154,10 @@ export async function POST(request: Request) {
       batchSeenMac.add(normMac);
 
       const finalLocation = formatLocation(upperFactory, item.line);
+      const itemInstalledAt =
+        item.installedAt && !isNaN(new Date(item.installedAt).getTime())
+          ? new Date(item.installedAt).toISOString()
+          : now;
 
       validItems.push({
         mcid: normMcid,
@@ -164,6 +169,7 @@ export async function POST(request: Request) {
         isUpdate,
         oldMac,
         oldNormMac,
+        installedAt: itemInstalledAt,
         historyId: `hist-imp-${Date.now()}-${index}`,
       });
     }
@@ -198,7 +204,7 @@ export async function POST(request: Request) {
             v.normMac,
             v.machineModel,
             v.location,
-            now,
+            v.installedAt,
             now,
             v.notes,
             technician,
@@ -262,7 +268,7 @@ export async function POST(request: Request) {
             v.normMac,
             v.machineModel,
             v.location,
-            now,
+            v.installedAt,
             now,
             v.notes,
             technician,
@@ -285,7 +291,7 @@ export async function POST(request: Request) {
             v.machineModel,
             v.location,
             v.notes || 'Batch Import CSV',
-            now,
+            v.installedAt,
             technician,
           ],
         });
@@ -301,7 +307,7 @@ export async function POST(request: Request) {
                   machine_model = CASE WHEN machine_model IS NULL OR machine_model = '' THEN ? ELSE machine_model END,
                   location = CASE WHEN location IS NULL OR location = '' THEN ? ELSE location END
               WHERE mcid = ? AND status = 'Planned'`,
-        params: [v.formattedMac, now, technician, v.machineModel, v.location, v.mcid],
+        params: [v.formattedMac, v.installedAt, technician, v.machineModel, v.location, v.mcid],
       });
     }
 

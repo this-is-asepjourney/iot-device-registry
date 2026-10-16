@@ -74,6 +74,10 @@ export async function POST(request: Request) {
       (planData?.notes ? `Pemasangan IoT selesai. Catatan: ${planData.notes}` : 'Instalasi selesai.');
 
     const now = new Date().toISOString();
+    const installedAt =
+      payload.installedAt && !isNaN(new Date(payload.installedAt).getTime())
+        ? new Date(payload.installedAt).toISOString()
+        : now;
     const historyId = `hist-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const technician = payload.technicianEmail || 'technician@factory.local';
 
@@ -93,7 +97,7 @@ export async function POST(request: Request) {
           normMac,
           finalModel,
           finalLocation,
-          now,
+          installedAt,
           now,
           finalNotes,
           technician,
@@ -116,7 +120,7 @@ export async function POST(request: Request) {
           finalModel,
           finalLocation,
           `Instalasi dari Rencana Pemasangan: ${finalNotes}`,
-          now,
+          installedAt,
           technician,
         ],
       },
@@ -129,7 +133,7 @@ export async function POST(request: Request) {
                   machine_model = CASE WHEN machine_model IS NULL OR machine_model = '' THEN ? ELSE machine_model END,
                   location = CASE WHEN location IS NULL OR location = '' THEN ? ELSE location END
               WHERE id = ? OR (mcid = ? AND status = 'Planned')`,
-        params: [formattedMac, now, technician, finalModel, finalLocation, payload.planId, normMcid],
+        params: [formattedMac, installedAt, technician, finalModel, finalLocation, payload.planId, normMcid],
       },
     ]);
 

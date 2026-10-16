@@ -490,9 +490,15 @@ export function DeviceList({
                         &ldquo;{device.notes}&rdquo;
                       </div>
                     )}
-                    <div className="flex items-center gap-1 text-slate-500 pl-5 text-[10px]">
-                      <Clock className="w-3 h-3 text-slate-600" />
-                      <span>Diperbarui: {formatDate(device.updatedAt)}</span>
+                    <div className="flex flex-col xs:flex-row xs:items-center justify-between text-slate-500 pl-5 text-[10px] gap-1 pt-0.5">
+                      <div className="flex items-center gap-1 text-slate-300">
+                        <Calendar className="w-3 h-3 text-cyan-400 shrink-0" />
+                        <span>Pasang: {formatDate(device.installedAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-slate-500">
+                        <Clock className="w-3 h-3 text-slate-600 shrink-0" />
+                        <span>Update: {formatDate(device.updatedAt)}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -549,7 +555,7 @@ export function DeviceList({
                   <th className="py-3 px-4">MAC Address IoT</th>
                   <th className="py-3 px-4">Lokasi & Factory</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Terakhir Diperbarui</th>
+                  <th className="py-3 px-4">Waktu Pasang & Update</th>
                   <th className="py-3 px-4 sm:px-6 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -641,9 +647,13 @@ export function DeviceList({
 
                       {/* Timestamp */}
                       <td className="py-3.5 px-4 text-slate-400">
-                        <div className="flex items-center gap-1 text-[11px]">
-                          <Clock className="w-3 h-3 text-slate-500" />
-                          <span>{formatDate(device.updatedAt)}</span>
+                        <div className="flex items-center gap-1 text-xs text-slate-200">
+                          <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <span className="font-medium font-mono text-[11px]">{formatDate(device.installedAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-0.5">
+                          <Clock className="w-3 h-3 text-slate-600 shrink-0" />
+                          <span>Update: {formatDate(device.updatedAt)}</span>
                         </div>
                         {device.lastTechnician && (
                           <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[140px]">

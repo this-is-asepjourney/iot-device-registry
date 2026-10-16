@@ -13,6 +13,8 @@ import {
   Building2,
   Scan,
   ShieldAlert,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 import { Device, DeviceStatus, FACTORY_LIST, FactoryCode } from '@/types';
 import { editDevice, deleteDevice } from '@/lib/device-service';
@@ -24,6 +26,7 @@ import {
   extractLine,
   formatLocation,
   getFactoryBadgeStyle,
+  toLocalDatetimeInputString,
 } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
@@ -48,6 +51,7 @@ export function EditDeviceModal({
   const [selectedFactory, setSelectedFactory] = useState<FactoryCode>('A1');
   const [line, setLine] = useState('');
   const [status, setStatus] = useState<DeviceStatus>('Installed');
+  const [installedAt, setInstalledAt] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -60,6 +64,7 @@ export function EditDeviceModal({
       setMachineModel(device.machineModel || '');
       setMacAddress(device.macAddress || '');
       setStatus(device.status);
+      setInstalledAt(toLocalDatetimeInputString(device.installedAt));
       setNotes(device.notes || '');
       setShowDeleteConfirm(false);
       setErrorMessage(null);
@@ -111,6 +116,7 @@ export function EditDeviceModal({
     }
 
     const finalLocation = formatLocation(selectedFactory, line);
+    const parsedInstalledAt = installedAt ? new Date(installedAt).toISOString() : device.installedAt;
 
     setIsSubmitting(true);
     try {
@@ -120,6 +126,7 @@ export function EditDeviceModal({
         machineModel: machineModel.trim(),
         location: finalLocation,
         status,
+        installedAt: parsedInstalledAt,
         notes: notes.trim(),
         technicianEmail: demoUser?.email || 'Admin',
       });
@@ -354,10 +361,50 @@ export function EditDeviceModal({
               </div>
             </div>
 
-            {/* Status Perangkat */}
+            {/* 6. Waktu / Tanggal Pemasangan */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>6. Waktu / Tanggal Pemasangan</span>
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setInstalledAt(toLocalDatetimeInputString(device.installedAt))}
+                    className="px-2 py-0.5 text-[10px] rounded font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                    title="Kembalikan ke waktu pemasangan awal tercatat"
+                  >
+                    Waktu Awal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInstalledAt(toLocalDatetimeInputString(new Date()))}
+                    className="px-2 py-0.5 text-[10px] rounded font-medium bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 transition-colors"
+                  >
+                    Sekarang
+                  </button>
+                </div>
+              </div>
+              <div className="relative">
+                <Clock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="datetime-local"
+                  value={installedAt}
+                  onChange={(e) => setInstalledAt(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                  required
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Koreksi tanggal dan jam instalasi perangkat jika terdapat kesalahan input atau upload susulan.
+              </p>
+            </div>
+
+            {/* 7. Status Perangkat */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Status Perangkat
+                7. Status Perangkat
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {(['Installed', 'Maintenance', 'Removed'] as DeviceStatus[]).map((st) => (
@@ -381,10 +428,10 @@ export function EditDeviceModal({
               </div>
             </div>
 
-            {/* 6. Catatan Teknis / Tambahan */}
+            {/* 8. Catatan Teknis / Tambahan */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                6. Catatan Teknis (Opsional)
+                8. Catatan Teknis (Opsional)
               </label>
               <textarea
                 value={notes}

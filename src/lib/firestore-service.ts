@@ -216,7 +216,7 @@ export async function installDevice(payload: InstallDevicePayload): Promise<void
         machineModel: payload.machineModel.trim(),
         location: payload.location.trim(),
         status: 'Installed',
-        installedAt: now,
+        installedAt: payload.installedAt || now,
         updatedAt: now,
         notes: payload.notes?.trim() || '',
         lastTechnician: payload.technicianEmail,
@@ -234,7 +234,7 @@ export async function installDevice(payload: InstallDevicePayload): Promise<void
         machineModel: payload.machineModel.trim(),
         location: payload.location.trim(),
         notes: payload.notes?.trim() || 'Pemasangan awal perangkat IoT pada mesin.',
-        timestamp: now,
+        timestamp: payload.installedAt || now,
         performedBy: payload.technicianEmail,
       });
     });
@@ -272,7 +272,7 @@ export async function installDevice(payload: InstallDevicePayload): Promise<void
     machineModel: payload.machineModel.trim(),
     location: payload.location.trim(),
     status: 'Installed',
-    installedAt: now,
+    installedAt: payload.installedAt || now,
     updatedAt: now,
     notes: payload.notes?.trim() || '',
     lastTechnician: payload.technicianEmail,

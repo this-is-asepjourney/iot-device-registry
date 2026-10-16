@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Camera, PlusCircle, AlertCircle, CheckCircle2, Loader2, Info, Building2, Layers } from 'lucide-react';
+import { X, Camera, PlusCircle, AlertCircle, CheckCircle2, Loader2, Info, Building2, Layers, Calendar, Clock } from 'lucide-react';
 import { installDevice } from '@/lib/device-service';
-import { formatMacAddress, isValidMacAddress, normalizeMcid, formatLocation, getFactoryBadgeStyle } from '@/lib/utils';
+import { formatMacAddress, isValidMacAddress, normalizeMcid, formatLocation, getFactoryBadgeStyle, toLocalDatetimeInputString } from '@/lib/utils';
 import { FACTORY_LIST, FactoryCode } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
@@ -28,6 +28,7 @@ export function InstallationModal({
   const [machineModel, setMachineModel] = useState('');
   const [selectedFactory, setSelectedFactory] = useState<FactoryCode>('A1');
   const [line, setLine] = useState('');
+  const [installedAt, setInstalledAt] = useState<string>(() => toLocalDatetimeInputString(new Date()));
   const [notes, setNotes] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -38,7 +39,10 @@ export function InstallationModal({
   React.useEffect(() => {
     if (initialMcid) setMcid(initialMcid);
     if (initialMac) setMacAddress(initialMac);
-  }, [initialMcid, initialMac]);
+    if (isOpen) {
+      setInstalledAt(toLocalDatetimeInputString(new Date()));
+    }
+  }, [initialMcid, initialMac, isOpen]);
 
   const handleMacChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatMacAddress(e.target.value);
@@ -69,6 +73,7 @@ export function InstallationModal({
     setLoading(true);
     const technician = user?.email || demoUser?.email || 'technician@factory.local';
     const finalLocation = formatLocation(selectedFactory, line);
+    const parsedInstalledAt = installedAt ? new Date(installedAt).toISOString() : new Date().toISOString();
 
     try {
       await installDevice({
@@ -78,6 +83,7 @@ export function InstallationModal({
         location: finalLocation,
         notes: notes.trim(),
         technicianEmail: technician,
+        installedAt: parsedInstalledAt,
       });
 
       setSuccessMessage(`Berhasil mendaftarkan instalasi untuk MCID [${normMcid}] dengan MAC [${macAddress}].`);
@@ -87,6 +93,7 @@ export function InstallationModal({
         setMacAddress('');
         setMachineModel('');
         setLine('');
+        setInstalledAt(toLocalDatetimeInputString(new Date()));
         setNotes('');
         onClose();
       }, 1200);
@@ -288,10 +295,64 @@ export function InstallationModal({
             </div>
           </div>
 
-          {/* 6. Catatan Tambahan (Opsional) */}
+          {/* 6. Waktu / Tanggal Pemasangan */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                <span>6. Waktu / Tanggal Pemasangan</span> <span className="text-cyan-400">*</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setInstalledAt(toLocalDatetimeInputString(new Date()))}
+                  className="px-2 py-0.5 text-[10px] rounded font-medium bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 transition-colors"
+                >
+                  Sekarang
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    setInstalledAt(toLocalDatetimeInputString(d));
+                  }}
+                  className="px-2 py-0.5 text-[10px] rounded font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                >
+                  Kemarin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 2);
+                    setInstalledAt(toLocalDatetimeInputString(d));
+                  }}
+                  className="px-2 py-0.5 text-[10px] rounded font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                >
+                  2 Hari Lalu
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <Clock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="datetime-local"
+                value={installedAt}
+                onChange={(e) => setInstalledAt(e.target.value)}
+                className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+                required
+              />
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1">
+              Sesuaikan tanggal & jam jika pemasangan fisik dilakukan pada hari sebelumnya (tidak harus hari H upload).
+            </p>
+          </div>
+
+          {/* 7. Catatan Tambahan (Opsional) */}
           <div>
             <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              6. Catatan Tambahan (Opsional)
+              7. Catatan Tambahan (Opsional)
             </label>
             <textarea
               value={notes}
