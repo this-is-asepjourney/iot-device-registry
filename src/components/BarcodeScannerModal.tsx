@@ -162,35 +162,29 @@ export function BarcodeScannerModal({
     video.playsInline = true;
     video.muted = true;
     video.autoplay = true;
+    video.controls = false;
 
-    // Force styles to override any inline style="width: 0px" during iOS layout animations
+    // Reset styles so video scales cleanly inside the viewport box without layout bugs
     video.style.width = '100%';
     video.style.height = '100%';
     video.style.minWidth = '100%';
     video.style.minHeight = '100%';
     video.style.objectFit = 'cover';
     video.style.display = 'block';
-    video.style.position = 'absolute';
-    video.style.top = '0';
-    video.style.left = '0';
-    (video.style as unknown as Record<string, string>).webkitTransform = 'translateZ(0)';
-    video.style.transform = 'translateZ(0)';
 
-    // Ensure playback starts on iOS WebKit
-    const playPromise = video.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(() => {
-        setTimeout(() => {
-          video.play().catch(() => {});
-        }, 150);
-      });
-    }
-
-    video.onloadedmetadata = () => {
-      if (video.paused) {
+    // Safely ensure playback only after stream is attached (prevents iOS WebKit NotSupportedError & black screen)
+    const tryPlay = () => {
+      if (video.srcObject && video.paused) {
         video.play().catch(() => {});
       }
     };
+
+    video.addEventListener('loadedmetadata', tryPlay);
+    video.addEventListener('canplay', tryPlay);
+
+    if (video.srcObject && video.paused) {
+      tryPlay();
+    }
   }, []);
 
   // Helper to start camera scanner with fallback chain
@@ -212,7 +206,7 @@ export function BarcodeScannerModal({
 
       // Wait until container has real rendered dimensions (prevents iOS Safari 0x0 layout bug)
       let container: HTMLElement | null = null;
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 20; i++) {
         container = document.getElementById(scannerContainerId);
         if (container && container.clientWidth > 40 && container.clientHeight > 40) {
           break;
@@ -257,6 +251,8 @@ export function BarcodeScannerModal({
             Html5QrcodeSupportedFormats.UPC_A,
             Html5QrcodeSupportedFormats.UPC_E,
           ],
+          // Important for iOS: experimental BarcodeDetector on WebKit iOS 16/17 causes video freezes and black screens
+          useBarCodeDetectorIfSupported: false,
           verbose: false,
         });
         scannerRef.current = html5QrCode;
@@ -269,9 +265,7 @@ export function BarcodeScannerModal({
           // No-op per frame scan miss
         };
 
-        // Note: Do not constrain qrbox to a small square.
-        // Full frame scan allows wide 1D barcodes (MAC Code 128 / Code 39)
-        // and 2D QR codes to be decoded smoothly without coordinate offset distortion.
+        // Note: Full frame scan allows wide 1D barcodes and 2D QR codes to be decoded smoothly
         const config = {
           fps: 15,
         };
@@ -308,7 +302,51 @@ export function BarcodeScannerModal({
           }
         }
 
-        // Attempt 3: If environment failed (e.g. laptop / PC webcam without rear camera)
+        // Attempt 3: Query enumerated cameras (iOS Safari specific rear camera matching)
+        if (!started) {
+          try {
+            const devices = await Html5Qrcode.getCameras().catch(() => []);
+            if (devices && devices.length > 0) {
+              let targetCam = devices[0];
+              if (mode === 'environment') {
+                const backCam = devices.find((d) => {
+                  const lbl = (d.label || '').toLowerCase();
+                  return (
+                    lbl.includes('back') ||
+                    lbl.includes('rear') ||
+                    lbl.includes('belakang') ||
+                    lbl.includes('environment')
+                  );
+                });
+                targetCam = backCam || devices[devices.length - 1];
+              } else {
+                const frontCam = devices.find((d) => {
+                  const lbl = (d.label || '').toLowerCase();
+                  return (
+                    lbl.includes('front') ||
+                    lbl.includes('depan') ||
+                    lbl.includes('user') ||
+                    lbl.includes('facetime')
+                  );
+                });
+                targetCam = frontCam || devices[0];
+              }
+
+              await html5QrCode.start(
+                targetCam.id,
+                config,
+                qrSuccessCallback,
+                qrErrorCallback
+              );
+              started = true;
+              setSelectedCameraId(targetCam.id);
+            }
+          } catch (enumErr) {
+            console.warn('Starting via enumerated device failed:', enumErr);
+          }
+        }
+
+        // Attempt 4: Fallback to user facingMode if environment failed
         if (!started && mode === 'environment') {
           try {
             await html5QrCode.start(
@@ -321,21 +359,6 @@ export function BarcodeScannerModal({
             setFacingMode('user');
           } catch (altErr) {
             console.warn('Starting user facingMode fallback failed:', altErr);
-          }
-        }
-
-        // Attempt 4: Fallback to any enumerated video device
-        if (!started) {
-          const devices = await Html5Qrcode.getCameras().catch(() => []);
-          if (devices && devices.length > 0) {
-            await html5QrCode.start(
-              devices[0].id,
-              config,
-              qrSuccessCallback,
-              qrErrorCallback
-            );
-            started = true;
-            setSelectedCameraId(devices[0].id);
           }
         }
 
@@ -397,32 +420,36 @@ export function BarcodeScannerModal({
 
         setScannerStatus('error');
         const msg = err instanceof Error ? err.message : String(err);
+        const isInsecure =
+          typeof window !== 'undefined' &&
+          !window.isSecureContext &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1';
+
         if (
+          isInsecure ||
+          msg.includes('InsecureContext') ||
+          msg.includes('navigator.mediaDevices not supported')
+        ) {
+          setErrorMessage(
+            'Akses kamera diblokir oleh Safari/browser pada jaringan HTTP. Buka aplikasi menggunakan koneksi HTTPS atau gunakan tombol "Ambil Foto (Kamera HP)" / "Ketik Manual" di bawah.'
+          );
+        } else if (
           msg.includes('NotAllowedError') ||
           msg.includes('Permission') ||
           msg.includes('denied')
         ) {
           setErrorMessage(
-            'Izin kamera ditolak oleh browser. Klik icon gembok / izin di browser dan izinkan akses kamera.'
+            'Izin kamera ditolak oleh browser. Buka Pengaturan iPhone > Safari > Kamera, dan pilih "Izinkan" atau klik ikon pengaturan izin di browser.'
           );
         } else if (
           msg.includes('NotFoundError') ||
           msg.includes('DevicesNotFoundError')
         ) {
-          setErrorMessage('Perangkat kamera tidak ditemukan pada sistem/komputer ini.');
-        } else if (
-          msg.includes('InsecureContext') ||
-          (typeof window !== 'undefined' &&
-            !window.isSecureContext &&
-            window.location.hostname !== 'localhost' &&
-            window.location.hostname !== '127.0.0.1')
-        ) {
-          setErrorMessage(
-            'Akses kamera memerlukan koneksi HTTPS saat dibuka dari jaringan WiFi atau HP.'
-          );
+          setErrorMessage('Perangkat kamera tidak ditemukan pada sistem/HP ini.');
         } else {
           setErrorMessage(
-            'Gagal membuka kamera. Anda dapat mengganti kamera, upload file foto barcode, atau input manual.'
+            'Kamera tidak tertampilkan atau gagal dibuka. Silakan ganti kamera, ambil foto langsung dengan kamera HP, atau ketik manual.'
           );
         }
       } finally {
@@ -543,21 +570,17 @@ export function BarcodeScannerModal({
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          -webkit-transform: translateZ(0) !important;
-          transform: translateZ(0) !important;
         }
         #${scannerContainerId} video {
           width: 100% !important;
           height: 100% !important;
           min-width: 100% !important;
           min-height: 100% !important;
+          max-width: none !important;
+          max-height: none !important;
           object-fit: cover !important;
           display: block !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          -webkit-transform: translateZ(0) !important;
-          transform: translateZ(0) !important;
+          border-radius: 1rem !important;
         }
         #${scannerContainerId} canvas {
           display: none !important;
@@ -594,13 +617,11 @@ export function BarcodeScannerModal({
 
         {/* Content Body */}
         <div className="p-4 sm:p-6 flex flex-col items-center overflow-y-auto">
-          {/* Viewport Box with WebKit GPU acceleration fixes */}
+          {/* Viewport Box without conflicting WebKit mask filters */}
           <div
-            className="relative w-full aspect-square max-w-[280px] sm:max-w-[340px] rounded-2xl overflow-hidden bg-black border border-slate-700/80 flex items-center justify-center shadow-inner shrink-0 min-h-[260px]"
+            className="relative w-full aspect-square max-w-[280px] sm:max-w-[340px] rounded-2xl overflow-hidden bg-slate-950 border border-slate-700/80 flex items-center justify-center shadow-inner shrink-0 min-h-[260px]"
             style={{
-              WebkitTransform: 'translateZ(0)',
-              transform: 'translateZ(0)',
-              WebkitMaskImage: '-webkit-radial-gradient(white, black)',
+              isolation: 'isolate',
             }}
           >
             {/* The html5-qrcode target div */}
@@ -638,7 +659,7 @@ export function BarcodeScannerModal({
                   Menginisialisasi kamera...
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  Mohon berikan izin kamera jika diminta browser
+                  Mohon izinkan akses kamera jika diminta browser
                 </span>
               </div>
             )}
@@ -656,29 +677,40 @@ export function BarcodeScannerModal({
 
             {/* Error or No Camera Overlay */}
             {scannerStatus === 'error' && (
-              <div className="absolute inset-0 p-4 bg-slate-950/95 flex flex-col items-center justify-center text-center gap-3">
-                <AlertTriangle className="w-9 h-9 text-amber-400 shrink-0" />
+              <div className="absolute inset-0 p-4 bg-slate-950/95 flex flex-col items-center justify-center text-center gap-2.5">
+                <AlertTriangle className="w-8 h-8 text-amber-400 shrink-0" />
                 <p className="text-xs text-slate-200 leading-relaxed px-1">
                   {errorMessage}
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                   <button
                     onClick={() => startCameraInstance(selectedCameraId, facingMode)}
-                    className="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-700"
+                    className="px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-700"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Coba Lagi
                   </button>
                   <button
                     onClick={handleToggleFacingMode}
-                    className="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-700"
+                    className="px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-700"
                   >
                     <SwitchCamera className="w-3.5 h-3.5" />
                     Ganti Kamera
                   </button>
+                  <label className="px-2.5 py-1.5 text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors shadow-md">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Ambil Foto HP</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                    />
+                  </label>
                   <button
                     onClick={() => setIsManualInput(true)}
-                    className="px-3 py-1.5 text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg flex items-center gap-1.5 transition-colors shadow-md"
+                    className="px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-700"
                   >
                     <Keyboard className="w-3.5 h-3.5" />
                     Ketik Manual
@@ -689,15 +721,15 @@ export function BarcodeScannerModal({
           </div>
 
           {/* Controls bar below camera */}
-          <div className="flex items-center justify-between w-full mt-3.5 text-xs text-slate-400 gap-2">
+          <div className="flex items-center justify-between w-full mt-3.5 text-xs text-slate-400 gap-1.5 sm:gap-2">
             {/* Toggle Rear / Front Camera */}
             <button
               onClick={handleToggleFacingMode}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 active:scale-95 transition-all text-xs border border-slate-700/60"
+              className="flex-1 flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 active:scale-95 transition-all text-xs border border-slate-700/60"
               title="Ganti Kamera Belakang / Depan"
             >
               <SwitchCamera className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span className="truncate max-w-[130px] sm:max-w-[160px]">{cameraLabel}</span>
+              <span className="truncate max-w-[100px] sm:max-w-[130px]">{cameraLabel}</span>
             </button>
 
             {/* Flashlight / Torch toggle button (if supported by device rear camera) */}
@@ -705,7 +737,7 @@ export function BarcodeScannerModal({
               <button
                 type="button"
                 onClick={handleToggleTorch}
-                className={`px-3 py-2 rounded-xl active:scale-95 transition-all text-xs border flex items-center gap-1.5 ${
+                className={`px-2.5 sm:px-3 py-2 rounded-xl active:scale-95 transition-all text-xs border flex items-center gap-1.5 ${
                   isTorchOn
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
                     : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700/60'
@@ -717,14 +749,27 @@ export function BarcodeScannerModal({
                 ) : (
                   <Flashlight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 )}
-                <span className="hidden xs:inline">{isTorchOn ? 'Senter Aktif' : 'Senter'}</span>
+                <span className="hidden sm:inline">{isTorchOn ? 'Senter Aktif' : 'Senter'}</span>
               </button>
             )}
 
-            {/* Upload image fallback */}
-            <label className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 cursor-pointer active:scale-95 transition-all text-xs border border-slate-700/60">
+            {/* Direct Native Phone Camera Snap - 100% Reliable on iPhone XR iOS Safari */}
+            <label className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 cursor-pointer active:scale-95 transition-all text-xs border border-cyan-800/60 font-medium" title="Buka Kamera Bawaan HP untuk Foto Barcode">
+              <Camera className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span>Foto HP</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+
+            {/* Upload image from gallery */}
+            <label className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 cursor-pointer active:scale-95 transition-all text-xs border border-slate-700/60" title="Pilih foto dari Galeri">
               <Upload className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Upload Foto</span>
+              <span>Galeri</span>
               <input
                 type="file"
                 accept="image/*"
