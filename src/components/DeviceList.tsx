@@ -446,7 +446,7 @@ export function DeviceList({
                           </button>
                         </div>
                         <div className="text-xs text-slate-300 font-medium truncate">
-                          {device.machineModel}
+                          {device.machineModel || <span className="text-slate-500 italic font-normal">Model belum diisi</span>}
                         </div>
                       </div>
                     </div>
@@ -592,7 +592,9 @@ export function DeviceList({
                                 )}
                               </button>
                             </div>
-                            <div className="text-slate-300 font-medium">{device.machineModel}</div>
+                            <div className="text-slate-300 font-medium">
+                              {device.machineModel || <span className="text-slate-500 italic font-normal text-xs">Model belum diisi</span>}
+                            </div>
                             {device.notes && (
                               <div className="text-[11px] text-slate-500 italic mt-0.5 truncate max-w-[220px]">
                                 {device.notes}

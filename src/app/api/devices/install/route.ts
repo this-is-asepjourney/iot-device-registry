@@ -24,12 +24,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!payload.machineModel?.trim() || !payload.location?.trim()) {
+    if (!payload.location?.trim()) {
       return NextResponse.json(
-        { success: false, error: 'Model mesin dan lokasi pabrik wajib diisi.' },
+        { success: false, error: 'Lokasi pabrik wajib diisi.' },
         { status: 400 }
       );
     }
+
+    const machineModel = payload.machineModel?.trim() || '';
 
     // 1. Check if MCID already has an active device
     const existingDev = await queryD1<{ mcid: string; status: string; mac_address: string }>(
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
           normMcid,
           formattedMac,
           normMac,
-          payload.machineModel.trim(),
+          machineModel,
           payload.location.trim(),
           installedAt,
           now,
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
           historyId,
           normMcid,
           formattedMac,
-          payload.machineModel.trim(),
+          machineModel,
           payload.location.trim(),
           payload.notes?.trim() || 'Pemasangan awal perangkat IoT pada mesin.',
           installedAt,

@@ -65,11 +65,6 @@ export function InstallationModal({
       return;
     }
 
-    if (!machineModel.trim()) {
-      setErrorMessage('Nama atau model mesin wajib diisi.');
-      return;
-    }
-
     setLoading(true);
     const technician = user?.email || demoUser?.email || 'technician@factory.local';
     const finalLocation = formatLocation(selectedFactory, line);
@@ -218,21 +213,22 @@ export function InstallationModal({
             </p>
           </div>
 
-          {/* 3. Model Mesin */}
+          {/* 3. Model Mesin (Opsional) */}
           <div>
-            <label className="block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              3. Model Mesin <span className="text-cyan-400">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-300">
+                3. Model Mesin <span className="text-slate-500 font-normal lowercase">(opsional)</span>
+              </label>
+            </div>
             <input
               type="text"
               value={machineModel}
               onChange={(e) => setMachineModel(e.target.value)}
-              placeholder="Contoh: Haas CNC VF-2, Aida 50 Ton Press..."
+              placeholder="Contoh: Haas CNC VF-2, Aida 50 Ton Press (Opsional)..."
               className="w-full px-3.5 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
-              required
             />
             <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1">
-              Merk dan tipe spesifikasi mesin manufaktur yang dipasangi modul.
+              Merk dan tipe spesifikasi mesin manufaktur (opsional, dapat diisi atau diperbarui nanti).
             </p>
           </div>
 

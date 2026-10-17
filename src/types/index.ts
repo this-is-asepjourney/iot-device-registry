@@ -40,7 +40,7 @@ export interface InstallationHistory {
 export interface InstallDevicePayload {
   mcid: string;
   macAddress: string;
-  machineModel: string;
+  machineModel?: string;
   location: string;
   notes?: string;
   technicianEmail: string;
