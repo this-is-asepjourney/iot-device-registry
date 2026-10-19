@@ -12,14 +12,15 @@ import {
   SlidersHorizontal,
   RotateCcw,
 } from 'lucide-react';
-import { InstallationHistory } from '@/types';
-import { formatDate, isDateInPreset, DateFilterPreset } from '@/lib/utils';
+import { InstallationHistory, FACTORY_LIST } from '@/types';
+import { formatDate, isDateInPreset, DateFilterPreset, extractFactory } from '@/lib/utils';
 
 interface HistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   history: InstallationHistory[];
   initialMcidFilter?: string;
+  initialFactoryFilter?: string;
 }
 
 export function HistoryModal({
@@ -27,9 +28,11 @@ export function HistoryModal({
   onClose,
   history,
   initialMcidFilter = '',
+  initialFactoryFilter = 'ALL',
 }: HistoryModalProps) {
   const [searchTerm, setSearchTerm] = useState(initialMcidFilter);
   const [selectedEvent, setSelectedEvent] = useState<string>('ALL');
+  const [factoryFilter, setFactoryFilter] = useState<string>(initialFactoryFilter || 'ALL');
   const [modelFilter, setModelFilter] = useState<string>('ALL');
   const [timeFilter, setTimeFilter] = useState<DateFilterPreset>('ALL');
   const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -40,6 +43,12 @@ export function HistoryModal({
       setSearchTerm(initialMcidFilter);
     }
   }, [initialMcidFilter]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setFactoryFilter(initialFactoryFilter || 'ALL');
+    }
+  }, [isOpen, initialFactoryFilter]);
 
   // Extract unique machine models from history
   const availableModels = useMemo(() => {
@@ -67,6 +76,10 @@ export function HistoryModal({
 
     const matchesEvent = selectedEvent === 'ALL' || item.eventType === selectedEvent;
 
+    const itemFactory = extractFactory(item.location);
+    const matchesFactory =
+      factoryFilter === 'ALL' || itemFactory === factoryFilter;
+
     const matchesModel =
       modelFilter === 'ALL' ||
       (item.machineModel &&
@@ -79,11 +92,12 @@ export function HistoryModal({
       customEndDate
     );
 
-    return matchesSearch && matchesEvent && matchesModel && matchesTime;
+    return matchesSearch && matchesEvent && matchesFactory && matchesModel && matchesTime;
   });
 
   const activeFiltersCount =
     (selectedEvent !== 'ALL' ? 1 : 0) +
+    (factoryFilter !== 'ALL' ? 1 : 0) +
     (modelFilter !== 'ALL' ? 1 : 0) +
     (timeFilter !== 'ALL' ? 1 : 0) +
     (searchTerm.trim() ? 1 : 0);
@@ -91,6 +105,7 @@ export function HistoryModal({
   const handleResetFilters = () => {
     setSearchTerm('');
     setSelectedEvent('ALL');
+    setFactoryFilter('ALL');
     setModelFilter('ALL');
     setTimeFilter('ALL');
     setCustomStartDate('');
@@ -194,6 +209,22 @@ export function HistoryModal({
             <div className="flex items-center gap-1.5 text-slate-400">
               <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <span className="font-semibold text-slate-300 text-[11px]">Filter:</span>
+            </div>
+
+            {/* Factory Pabrik */}
+            <div className="min-w-[120px] sm:min-w-[130px]">
+              <select
+                value={factoryFilter}
+                onChange={(e) => setFactoryFilter(e.target.value)}
+                className="w-full px-2.5 py-1 text-xs rounded-xl bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="ALL">Semua Pabrik</option>
+                {FACTORY_LIST.map((fac) => (
+                  <option key={fac} value={fac}>
+                    Factory {fac}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Model Mesin */}

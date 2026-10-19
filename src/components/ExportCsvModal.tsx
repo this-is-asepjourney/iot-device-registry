@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   Download,
@@ -11,15 +11,24 @@ import {
   Filter,
   AlertTriangle,
   RotateCcw,
+  Building2,
 } from 'lucide-react';
-import { Device, InstallationHistory } from '@/types';
-import { downloadCsv, formatDate, isDateInPreset, DateFilterPreset } from '@/lib/utils';
+import { Device, InstallationHistory, FACTORY_LIST } from '@/types';
+import {
+  downloadCsv,
+  formatDate,
+  isDateInPreset,
+  DateFilterPreset,
+  extractFactory,
+  getFactoryBadgeStyle,
+} from '@/lib/utils';
 
 interface ExportCsvModalProps {
   isOpen: boolean;
   onClose: () => void;
   devices: Device[];
   history: InstallationHistory[];
+  initialFactory?: 'ALL' | string;
 }
 
 export function ExportCsvModal({
@@ -27,13 +36,22 @@ export function ExportCsvModal({
   onClose,
   devices,
   history,
+  initialFactory = 'ALL',
 }: ExportCsvModalProps) {
   const [exportType, setExportType] = useState<'devices' | 'history'>('devices');
+  const [factoryFilter, setFactoryFilter] = useState<'ALL' | string>(initialFactory || 'ALL');
   const [datePreset, setDatePreset] = useState<DateFilterPreset>('ALL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [deviceDateField, setDeviceDateField] = useState<'installedAt' | 'updatedAt'>('installedAt');
   const [downloaded, setDownloaded] = useState(false);
+
+  // Sync factory filter whenever modal opens with initialFactory
+  useEffect(() => {
+    if (isOpen) {
+      setFactoryFilter(initialFactory || 'ALL');
+    }
+  }, [isOpen, initialFactory]);
 
   // Helper to format date object to YYYY-MM-DD for date input
   const toDateInputString = (d: Date) => {
@@ -83,20 +101,51 @@ export function ExportCsvModal({
     handlePresetSelect('ALL');
   };
 
-  // Filtered devices based on selected date range and target date field
+  // Item counts per factory for currently selected dataset
+  const factoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const items = exportType === 'devices' ? devices : history;
+    items.forEach((item) => {
+      const fact = extractFactory(item.location);
+      if (fact) {
+        counts[fact] = (counts[fact] || 0) + 1;
+      } else {
+        counts['OTHER'] = (counts['OTHER'] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [exportType, devices, history]);
+
+  // Filtered devices based on factory filter, selected date range and target date field
   const filteredDevices = useMemo(() => {
     return devices.filter((d) => {
+      if (factoryFilter !== 'ALL') {
+        const fact = extractFactory(d.location);
+        if (factoryFilter === 'OTHER') {
+          if (fact !== null) return false;
+        } else {
+          if (fact !== factoryFilter) return false;
+        }
+      }
       const dateToTest = deviceDateField === 'installedAt' ? d.installedAt : d.updatedAt;
       return isDateInPreset(dateToTest, datePreset, startDate, endDate);
     });
-  }, [devices, deviceDateField, datePreset, startDate, endDate]);
+  }, [devices, factoryFilter, deviceDateField, datePreset, startDate, endDate]);
 
-  // Filtered history based on selected date range
+  // Filtered history based on factory filter and selected date range
   const filteredHistory = useMemo(() => {
     return history.filter((h) => {
+      if (factoryFilter !== 'ALL') {
+        const fact = extractFactory(h.location);
+        if (factoryFilter === 'OTHER') {
+          if (fact !== null) return false;
+        } else {
+          if (fact !== factoryFilter) return false;
+        }
+      }
       return isDateInPreset(h.timestamp, datePreset, startDate, endDate);
     });
-  }, [history, datePreset, startDate, endDate]);
+  }, [history, factoryFilter, datePreset, startDate, endDate]);
 
   if (!isOpen) return null;
 
@@ -119,6 +168,13 @@ export function ExportCsvModal({
     } else {
       filenameDatePart = datePreset.toLowerCase();
     }
+
+    const factoryPrefix =
+      factoryFilter === 'ALL'
+        ? ''
+        : factoryFilter === 'OTHER'
+        ? 'non_factory_'
+        : `factory_${factoryFilter.toLowerCase()}_`;
 
     if (exportType === 'devices') {
       const headers = [
@@ -145,7 +201,7 @@ export function ExportCsvModal({
         d.notes || '',
       ]);
 
-      downloadCsv(`iot_devices_${filenameDatePart}.csv`, headers, rows);
+      downloadCsv(`iot_devices_${factoryPrefix}${filenameDatePart}.csv`, headers, rows);
     } else {
       const headers = [
         'Waktu Kejadian',
@@ -175,7 +231,7 @@ export function ExportCsvModal({
         h.notes || '',
       ]);
 
-      downloadCsv(`iot_history_${filenameDatePart}.csv`, headers, rows);
+      downloadCsv(`iot_history_${factoryPrefix}${filenameDatePart}.csv`, headers, rows);
     }
 
     setDownloaded(true);
@@ -272,18 +328,112 @@ export function ExportCsvModal({
             </div>
           </div>
 
-          {/* 2. Date Filtering Section */}
+          {/* 2. Factory Filter Section */}
+          <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                <Building2 className={`w-3.5 h-3.5 ${exportType === 'devices' ? 'text-emerald-400' : 'text-indigo-400'}`} />
+                <span>2. Filter Pabrik / Factory</span>
+              </div>
+              {factoryFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setFactoryFilter('ALL')}
+                  className={`text-[11px] text-slate-400 flex items-center gap-1 transition-colors ${
+                    exportType === 'devices' ? 'hover:text-emerald-400' : 'hover:text-indigo-400'
+                  }`}
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Semua Pabrik</span>
+                </button>
+              )}
+            </div>
+
+            {/* Factory Pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setFactoryFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all active:scale-95 ${
+                  factoryFilter === 'ALL'
+                    ? exportType === 'devices'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-950 font-semibold'
+                      : 'bg-indigo-600 text-white shadow-sm shadow-indigo-950 font-semibold'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                Semua ({exportType === 'devices' ? devices.length : history.length})
+              </button>
+
+              {FACTORY_LIST.map((fac) => {
+                const count = factoryCounts[fac] || 0;
+                const isSelected = factoryFilter === fac;
+                const badgeStyle = getFactoryBadgeStyle(fac);
+
+                return (
+                  <button
+                    key={fac}
+                    type="button"
+                    onClick={() => setFactoryFilter(fac)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all active:scale-95 flex items-center gap-1.5 ${
+                      isSelected
+                        ? exportType === 'devices'
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-950 scale-105 ring-1 ring-emerald-400/50'
+                          : 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-950 scale-105 ring-1 ring-indigo-400/50'
+                        : `${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border} hover:opacity-90`
+                    }`}
+                  >
+                    <span>{fac}</span>
+                    <span
+                      className={`text-[10px] px-1 py-0.2 rounded-full font-mono ${
+                        isSelected ? 'bg-black/30 text-white' : 'bg-slate-900/80 text-slate-400'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {factoryCounts['OTHER'] && factoryCounts['OTHER'] > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setFactoryFilter('OTHER')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all active:scale-95 flex items-center gap-1.5 ${
+                    factoryFilter === 'OTHER'
+                      ? exportType === 'devices'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-950 font-semibold scale-105'
+                        : 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-950 font-semibold scale-105'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  <span>Lainnya</span>
+                  <span
+                    className={`text-[10px] px-1 py-0.2 rounded-full font-mono ${
+                      factoryFilter === 'OTHER' ? 'bg-black/30 text-white' : 'bg-slate-900/80 text-slate-400'
+                    }`}
+                  >
+                    {factoryCounts['OTHER']}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* 3. Date Filtering Section */}
           <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
-                <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                <span>2. Rentang Tanggal Ekspor</span>
+                <Calendar className={`w-3.5 h-3.5 ${exportType === 'devices' ? 'text-emerald-400' : 'text-indigo-400'}`} />
+                <span>3. Rentang Tanggal Ekspor</span>
               </div>
               {(startDate || endDate || datePreset !== 'ALL') && (
                 <button
                   type="button"
                   onClick={handleResetDateFilter}
-                  className="text-[11px] text-slate-400 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                  className={`text-[11px] text-slate-400 flex items-center gap-1 transition-colors ${
+                    exportType === 'devices' ? 'hover:text-emerald-400' : 'hover:text-indigo-400'
+                  }`}
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>Semua Waktu</span>
@@ -309,7 +459,9 @@ export function ExportCsvModal({
                     onClick={() => handlePresetSelect(p.id)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
                       isActive
-                        ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-950'
+                        ? exportType === 'devices'
+                          ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-950'
+                          : 'bg-indigo-600 text-white shadow-sm shadow-indigo-950'
                         : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
                     }`}
                   >
@@ -330,7 +482,9 @@ export function ExportCsvModal({
                     type="date"
                     value={startDate}
                     onChange={(e) => handleStartDateChange(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-emerald-500 transition-colors"
+                    className={`w-full px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-slate-200 text-xs focus:outline-none transition-colors ${
+                      exportType === 'devices' ? 'focus:border-emerald-500' : 'focus:border-indigo-500'
+                    }`}
                   />
                 </div>
               </div>
@@ -343,7 +497,9 @@ export function ExportCsvModal({
                     type="date"
                     value={endDate}
                     onChange={(e) => handleEndDateChange(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-emerald-500 transition-colors"
+                    className={`w-full px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-slate-200 text-xs focus:outline-none transition-colors ${
+                      exportType === 'devices' ? 'focus:border-emerald-500' : 'focus:border-indigo-500'
+                    }`}
                   />
                 </div>
               </div>
@@ -384,7 +540,7 @@ export function ExportCsvModal({
             )}
           </div>
 
-          {/* 3. Feedback / Status Alert */}
+          {/* 4. Feedback / Status Alert */}
           {isDateRangeInvalid ? (
             <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-800/60 flex items-start gap-2.5 text-xs text-rose-300 animate-in fade-in">
               <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
@@ -396,7 +552,7 @@ export function ExportCsvModal({
               <div>
                 <p className="font-medium">Tidak ada data ditemukan</p>
                 <p className="text-[11px] text-amber-400/80 mt-0.5">
-                  Tidak ada data yang masuk dalam rentang tanggal ini. Silakan ubah rentang tanggal atau klik &quot;Semua Waktu&quot;.
+                  Tidak ada data yang cocok dengan {factoryFilter !== 'ALL' ? (factoryFilter === 'OTHER' ? 'Non-Factory' : `Factory ${factoryFilter}`) : 'semua pabrik'} dan rentang tanggal yang dipilih.
                 </p>
               </div>
             </div>
@@ -408,11 +564,18 @@ export function ExportCsvModal({
                   Siap mengekspor <strong className="text-white font-semibold">{currentCount}</strong> dari {totalCount} data
                 </span>
               </div>
-              <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60 hidden xs:inline">
-                {datePreset === 'ALL' && !startDate && !endDate
-                  ? 'Semua Waktu'
-                  : `${startDate || 'Awal'} sd ${endDate || 'Sekarang'}`}
-              </span>
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                {factoryFilter !== 'ALL' && (
+                  <span className="text-[10px] text-emerald-300 font-bold bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-700/60">
+                    {factoryFilter === 'OTHER' ? 'Non-Factory' : `Factory ${factoryFilter}`}
+                  </span>
+                )}
+                <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60 hidden xs:inline">
+                  {datePreset === 'ALL' && !startDate && !endDate
+                    ? 'Semua Waktu'
+                    : `${startDate || 'Awal'} sd ${endDate || 'Sekarang'}`}
+                </span>
+              </div>
             </div>
           )}
 

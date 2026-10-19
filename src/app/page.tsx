@@ -622,6 +622,7 @@ export default function Home() {
         onClose={() => setIsHistoryModalOpen(false)}
         history={history}
         initialMcidFilter={historyFilterMcid}
+        initialFactoryFilter={factoryFilter}
       />
 
       {/* 6. Export CSV Modal */}
@@ -630,6 +631,7 @@ export default function Home() {
         onClose={() => setIsExportModalOpen(false)}
         devices={devices}
         history={history}
+        initialFactory={factoryFilter}
       />
 
       {/* 7. Import CSV Modal */}
